@@ -344,12 +344,12 @@ Each family is a builder `build(tasks, trajectories, env, config) -> list[ProbeI
 Items are built from gold trajectories (and, for `compounding`, from agents' own trajectories) on `train`
 tasks, replayed via `env.replay`, so the environment state is real and `valid_actions` can supply distractors.
 
-- **(i) Compounding errors.** Take an agent's own train-split episode (from a pilot run of every agent on a
-  fixed set of train tasks), find a step where it deviated from gold, keep the prefix up to `d` steps after the
-  deviation, and ask for the next action; gold is the gold action from the actual environment state (recomputed
-  by `replay` plus the environment's gold path from that state, see D5.6). Items are tagged with
-  `n_errors_in_prefix` and `d`. The contrast is accuracy with own-error prefixes vs. gold prefixes of the same
-  length.
+- **(i) Compounding errors.** A gold prefix of length `n`, then the agent acts freely for `d` steps (its own
+  errors accumulate in its context at run time), then one scored decision. The matched control is the same item
+  with `d = 0`. Scored by exact match against the gold actions still untaken and by whether the score moves.
+  Items are built without a model, so every agent answers the same items. (Revised 2026-10-27: the original
+  design took prefixes from the agent's own episodes, but untuned agents leave gold at step 0, so no such prefix
+  exists at the floor.)
 - **(ii) State tracking.** Gold prefix in which a fact needed for the next action (an object's location, a
   container's state) was established `k` steps ago, with filler gold steps in between. Items tagged with `k`;
   the feature is the slope of accuracy against `k`, plus the mean.
@@ -507,6 +507,7 @@ probes have spread across the two or three agents tried. Those decisions are wri
 | steps per episode, valid-action rate | 64, 0.90; stop reasons: 9 step cap, 5 done, 1 invalid streak |
 | tokens per episode | 262k (prompt-dominated: the whole history is resent each step) |
 | recovery probes: exact / score-moved | 0.03 / 0.10; 1.1k tokens per item; 60 items answered in 12 s |
+| compounding probes (192 items, 8 train task types): exact by depth d=0 / 2 / 5 | 0.61 / 0.48 / 0.44 (n = 64 / 56 / 48); valid-action rate 0.83 / 0.79 / 0.71; 1.2k tokens per item; 32 s total |
 | wall time | 15 episodes in 186 s with 8 workers on one H100 |
 
 What this changes:
@@ -521,6 +522,9 @@ What this changes:
   `look around`; exact match against the one gold action scores that wrong. Open decision D8.2: score recovery
   over a short continuation (the agent gets up to `k` steps, correct if it reaches the gold state or the score
   moves) rather than one decision. This costs more tokens per item but is still far below an episode.
+- **Compounding is measurable at the floor.** Even for an agent whose episodes score near zero, next-action
+  accuracy from a gold prefix is well above zero and falls monotonically with the number of free steps. This is
+  the kind of spread the probes need; whether it predicts anything is the study's question.
 - **Throughput is fine.** 8 environment workers kept one H100 busy; probes are two orders of magnitude cheaper
   per item than episodes, as the design assumes.
 
