@@ -8,7 +8,8 @@ from core.schema import ProbeItem, StepRow, TaskRow
 
 
 def _call(client: Client, prompt: list[dict], seed: int, sampling: Sampling, thinking: bool):
-    extra = {"chat_template_kwargs": {"thinking": thinking}} if thinking else None
+    # always sent: Granite 4.2's template defaults enable_thinking to true; templates without the variable ignore it
+    extra = {"chat_template_kwargs": {"enable_thinking": thinking}}
     return client.chat(prompt, seed=seed, sampling=sampling, extra=extra)
 
 
