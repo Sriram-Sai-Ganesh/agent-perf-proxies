@@ -1,0 +1,10 @@
+tex/
+**temp
+**.DS_Store
+.venv/
+**/.venv/
+__pycache__/
+*.pyc
+cluster/site.env
+cluster/jobs/
+slurm-*.out
