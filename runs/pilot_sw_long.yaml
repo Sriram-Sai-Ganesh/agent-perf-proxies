@@ -1,0 +1,12 @@
+# Pilot: one Granite agent on long ScienceWorld test tasks. Needs a vLLM endpoint (serve/server.py writes endpoint.json).
+run_id: pilot_sw_long
+env: {name: scienceworld, settings: {simplification: easy, step_limit: 100}}
+tasks: $DATA_ROOT/catalogs/scienceworld.parquet
+suite: {split: test, min_gold: 30, cap_per_type: 3, seed: 0}
+agents: [granite-4.1-8b/none/react]
+endpoint: {file: $DATA_ROOT/serve/granite-4.1-8b/endpoint.json}
+seeds: [0]
+max_steps: 100
+sampling: {temperature: 0.0, max_tokens: 256}
+scaffold: {window: 40}
+workers: 16

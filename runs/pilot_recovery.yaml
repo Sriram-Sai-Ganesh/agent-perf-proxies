@@ -1,0 +1,10 @@
+# Pilot: recovery probes built by core.probes.build, answered by one agent.
+run_id: pilot_recovery
+env: {name: scienceworld, settings: {simplification: easy, step_limit: 100}}
+probes: $DATA_ROOT/probes/scienceworld/recovery.jsonl
+agents: [granite-4.1-8b/none/react]
+endpoint: {file: $DATA_ROOT/serve/granite-4.1-8b/endpoint.json}
+seeds: [0]
+sampling: {temperature: 0.0, max_tokens: 256}
+scaffold: {window: 40}
+workers: 16
