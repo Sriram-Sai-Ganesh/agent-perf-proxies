@@ -58,7 +58,7 @@ def print_episodes(eps: list[dict]) -> None:
 
 
 def print_probes(path: str) -> None:
-    rows = [r for r in store.read(path) if r["kind"] == "probe"]
+    rows = [r for r in store.read(path) if r["kind"] == "probe" and json.loads(r["meta"]).get("scored", True)]
     print(
         f"{'agent':32} {'family':12} {'control':8} {'n':>4} {'exact':>6} {'progress':>8} {'valid':>6} {'tokens/item':>11}"
     )
