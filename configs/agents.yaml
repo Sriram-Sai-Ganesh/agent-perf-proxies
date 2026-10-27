@@ -1,0 +1,14 @@
+# The agent pool. An agent is a base, an optional LoRA adapter, and a scaffold. Adapters are added as they are trained.
+bases:
+  granite-4.1-3b: {hub_id: ibm-granite/granite-4.1-3b, thinking: false}
+  granite-4.1-8b: {hub_id: ibm-granite/granite-4.1-8b, thinking: false}
+  granite-4.2-8b: {hub_id: ibm-granite/granite-4.2-8b, thinking: false}
+  gemma-4-e2b:    {hub_id: google/gemma-4-E2B-it, thinking: false}
+  gemma-4-12b:    {hub_id: google/gemma-4-12B-it, thinking: false}
+adapters: {}
+agents:
+  - {id: granite-4.1-3b/none/react, base: granite-4.1-3b, scaffold: react}
+  - {id: granite-4.1-8b/none/react, base: granite-4.1-8b, scaffold: react}
+  - {id: granite-4.2-8b/none/react, base: granite-4.2-8b, scaffold: react}
+  - {id: gemma-4-e2b/none/react,    base: gemma-4-e2b,    scaffold: react}
+  - {id: gemma-4-12b/none/react,    base: gemma-4-12b,    scaffold: react}

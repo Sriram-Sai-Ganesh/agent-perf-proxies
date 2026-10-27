@@ -1,0 +1,9 @@
+[project]
+name = "serve"
+version = "0.0.0"
+description = "vLLM server for one base model and its LoRA adapters"
+requires-python = ">=3.12,<3.13"
+dependencies = ["vllm>=0.11", "core"]
+
+[tool.uv.sources]
+core = { path = "..", editable = true }
