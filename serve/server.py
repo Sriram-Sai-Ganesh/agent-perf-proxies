@@ -32,6 +32,9 @@ def main() -> None:
     ap.add_argument("--max-model-len", type=int, default=32768)
     ap.add_argument("--gpu-mem", type=float, default=0.85)
     ap.add_argument("--tp", type=int, default=1)
+    ap.add_argument("--dp", type=int, default=1, help="data-parallel replicas, one per GPU; cuts wall time for many small requests")
+    ap.add_argument("--reasoning-parser", default=None, help="e.g. granite_thinking_parser; splits thinking into reasoning_content")
+    ap.add_argument("--reasoning-parser-plugin", default=None, help="path to a parser module the model ships, if not built in")
     ap.add_argument("--max-lora-rank", type=int, default=32)
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--startup-timeout", type=int, default=1200)
@@ -48,6 +51,12 @@ def main() -> None:
         "--enable-prefix-caching",
         "--enable-prompt-tokens-details",  # else usage.prompt_tokens_details.cached_tokens is never reported
     ]  # fmt: skip
+    if args.dp > 1:
+        cmd += ["--data-parallel-size", str(args.dp)]
+    if args.reasoning_parser:
+        cmd += ["--reasoning-parser", args.reasoning_parser]
+    if args.reasoning_parser_plugin:
+        cmd += ["--reasoning-parser-plugin", args.reasoning_parser_plugin]
     if args.adapter:
         cmd += ["--enable-lora", "--max-lora-rank", str(args.max_lora_rank), "--lora-modules", *args.adapter]
     os.makedirs(args.out, exist_ok=True)
