@@ -1,0 +1,15 @@
+# The same checks AGENTS.md asks for before a commit: ruff check, ruff format --check, pytest.
+# Install once with: uv run pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run python -m pytest -q
+        language: system
+        pass_filenames: false
