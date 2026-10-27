@@ -46,6 +46,7 @@ def main() -> None:
         "--gpu-memory-utilization", str(args.gpu_mem),
         "--tensor-parallel-size", str(args.tp),
         "--enable-prefix-caching",
+        "--enable-prompt-tokens-details",  # else usage.prompt_tokens_details.cached_tokens is never reported
     ]  # fmt: skip
     if args.adapter:
         cmd += ["--enable-lora", "--max-lora-rank", str(args.max_lora_rank), "--lora-modules", *args.adapter]

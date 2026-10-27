@@ -499,6 +499,31 @@ endpoint source (`serve` locally, or `base_url`). Overrides with `-o key=value` 
 The pilot decides `L`, the ScienceWorld simplification, whether the floor is a problem, and whether the
 probes have spread across the two or three agents tried. Those decisions are written back into this document.
 
+### Pilot results, 2026-10-27 (granite-4.1-8b, ReAct, ScienceWorld `easy`, 15 test episodes with gold length ≥ 30, 60 recovery probes)
+
+| measure | value |
+| --- | --- |
+| success / final score / progress rate | 0.00 / 0.02 / 0.07 (progress 0.13 in the 60–100 gold bin) |
+| steps per episode, valid-action rate | 64, 0.90; stop reasons: 9 step cap, 5 done, 1 invalid streak |
+| tokens per episode | 262k (prompt-dominated: the whole history is resent each step) |
+| recovery probes: exact / score-moved | 0.03 / 0.10; 1.1k tokens per item; 60 items answered in 12 s |
+| wall time | 15 episodes in 186 s with 8 workers on one H100 |
+
+What this changes:
+- **Floor confirmed.** Final score is uninformative for untuned 8B; `progress` (max score reached) is the
+  working target. One episode reached 0.73 then hit ScienceWorld's `focus on` trap (wrong focus ends the task
+  at score 0). That trap is part of the environment and stays.
+- **`C_full` is larger than the proposal's estimate.** About 260k tokens per long episode means roughly 70M
+  tokens per agent-seed for a 270-episode suite, counted without prefix caching. Open decision D8.1: whether
+  budgets count cached prompt tokens at full price (conservative, what a hosted API would charge) or at the
+  server's cached rate. The server now reports `cached_tokens`, so both can be computed from the same rows.
+- **Single-step recovery scoring is too strict.** After a wrong-room failure the agent reasonably says
+  `look around`; exact match against the one gold action scores that wrong. Open decision D8.2: score recovery
+  over a short continuation (the agent gets up to `k` steps, correct if it reaches the gold state or the score
+  moves) rather than one decision. This costs more tokens per item but is still far below an episode.
+- **Throughput is fine.** 8 environment workers kept one H100 busy; probes are two orders of magnitude cheaper
+  per item than episodes, as the design assumes.
+
 ## 9. Testing
 
 `tests/` runs on CPU in the `core` venv with:
@@ -528,6 +553,8 @@ Every analysis script is deterministic given its config and seed.
 | D5.7 | probe families on both environments | decided: ScienceWorld end to end first |
 | D5.8 | B3 items and scorer | decided: fixed static sample; own scorer |
 | D6.1 | containers | bare uv venvs |
+| D8.1 | count cached prompt tokens at full or cached price | compute both; decide after the first full agent |
+| D8.2 | recovery probe: one decision or a k-step continuation | k-step, k≈3; keep the one-decision score as a secondary column |
 
 Not in scope unless added later: failure-type labelling of long trajectories (proposal's optional validity
 check), thinking-mode variants (declined 2026-10-27), environments beyond ScienceWorld and ALFWorld.
