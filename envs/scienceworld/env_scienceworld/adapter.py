@@ -5,6 +5,9 @@ import os
 import jdk4py
 
 os.environ["PATH"] = str(jdk4py.JAVA.parent) + os.pathsep + os.environ["PATH"]  # scienceworld runs `java` from PATH
+# no /tmp/hsperfdata_<user>/<pid> file: with many JVMs on a shared node a locked one makes the JVM print a warning
+# on stdout, where py4j expects only the port number, and the environment fails to start
+os.environ.setdefault("JAVA_TOOL_OPTIONS", "-XX:-UsePerfData")
 
 from scienceworld import ScienceWorldEnv
 
