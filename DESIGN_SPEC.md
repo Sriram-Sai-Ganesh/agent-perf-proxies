@@ -510,6 +510,28 @@ probes have spread across the two or three agents tried. Those decisions are wri
 | compounding probes (192 items, 8 train task types): exact by depth d=0 / 2 / 5 | 0.61 / 0.48 / 0.44 (n = 64 / 56 / 48); valid-action rate 0.83 / 0.79 / 0.71; 1.2k tokens per item; 32 s total |
 | wall time | 15 episodes in 186 s with 8 workers on one H100 |
 
+### Second agent, 2026-10-27: granite-4.2-8b with thinking (served data-parallel on 3 GPUs, output budget 8192 tokens)
+
+| measure | granite-4.1-8b | granite-4.2-8b thinking |
+| --- | --- | --- |
+| long episodes: success / final / progress | 0.00 / 0.02 / 0.07 (n=15) | 0.14 / 0.16 / 0.25 (n=14; one episode still running) |
+| steps per episode, tokens per episode | 64, 262k | 20, 58k (mean 1.4k output tokens per step, most of it thinking) |
+| recovery probes: exact / score-moved / valid | 0.03 / 0.10 / 0.83 | 0.17 / 0.17 / 0.97 |
+| compounding exact at d = 0 / 2 / 5 | 0.61 / 0.48 / 0.44 | 0.34 / 0.25 / 0.23 |
+| compounding valid-action rate at d = 0 / 2 / 5 | 0.83 / 0.79 / 0.71 | 0.95 / 0.88 / 0.78 |
+| wall time, 15 episodes | 3 min on 1 GPU | about 45 min on 3 GPUs: thinking steps are sequential within an episode |
+
+- **Output budget is part of the measurement.** At a 2048-token budget, 17% of the thinking agent's steps and
+  31% of its probe answers were cut off inside the thinking, which leaves an empty action; 8 of 15 episodes
+  ended on an invalid streak for that reason alone. At 8192 nothing is cut. Decision D8.3: thinking agents get
+  a per-step budget of 8192 and a truncated step is recorded as `stop_reason=truncated`, not as an invalid action.
+- **Exact match punishes thinking.** The thinking agent's compounding exact-match is far lower than 4.1's while
+  its valid-action rate is far higher and its episode progress is 3.5× higher: it chooses sensible actions
+  that are not the gold string. Exact match against the gold multiset is not a usable probe score on its own;
+  this strengthens D8.2 (score over a short continuation, or by state reached).
+- **Data-parallel serving helps probes, not episodes.** 192 compounding items ran in parallel across replicas;
+  a single long episode is a chain of sequential calls and gains nothing from more GPUs.
+
 What this changes:
 - **Floor confirmed.** Final score is uninformative for untuned 8B; `progress` (max score reached) is the
   working target. One episode reached 0.73 then hit ScienceWorld's `focus on` trap (wrong focus ends the task
@@ -559,6 +581,7 @@ Every analysis script is deterministic given its config and seed.
 | D6.1 | containers | bare uv venvs |
 | D8.1 | count cached prompt tokens at full or cached price | compute both; decide after the first full agent |
 | D8.2 | recovery probe: one decision or a k-step continuation | k-step, k≈3; keep the one-decision score as a secondary column |
+| D8.3 | output budget for thinking agents and how a truncated step is recorded | 8192 tokens; `stop_reason=truncated`, not an invalid action |
 
 Not in scope unless added later: failure-type labelling of long trajectories (proposal's optional validity
 check), thinking-mode variants (declined 2026-10-27), environments beyond ScienceWorld and ALFWorld.
