@@ -2,6 +2,7 @@
 
 from core.env import Environment, replay
 from core.llm import Client, Sampling
+from core.probes.compounding import remaining_gold
 from core.scaffolds import Scaffold
 from core.schema import ProbeItem, StepRow, TaskRow
 
@@ -80,38 +81,57 @@ def run_probe(
     sampling: Sampling,
     run_id: str,
 ) -> StepRow:
-    """Replay the prefix, ask for one action, score it by exact match and by whether the score moved."""
-    before = replay(env, item.source_task_id, [a for _, a in item.prefix])
+    """Replay the prefix, let the agent act for `meta.free_steps` steps (default 0), then score the next action.
+
+    Only the last step is scored (`meta.scored`), by exact match against the gold actions still untaken and by
+    whether the environment score moved. Returns one row per step taken.
+    """
+    taken = [a for _, a in item.prefix]
+    before = replay(env, item.source_task_id, taken)
     state = scaffold.from_prefix(item.task_text, env.action_templates(), item.prefix)
-    prompt = scaffold.prompt(state, before.observation)
-    reply = _call(client, prompt, seed * 100003, sampling, thinking)
-    action = scaffold.parse(state, before.observation, reply.text)
-    after = env.step(action)
-    return StepRow(
-        run_id=run_id,
-        agent_id=agent_id,
-        kind="probe",
-        item_id=item.probe_id,
-        seed=seed,
-        step=0,
-        observation=before.observation,
-        prompt=prompt,
-        completion=reply.text,
-        action=action,
-        valid=after.valid,
-        reward=after.reward,
-        score=after.score,
-        done=after.done,
-        prompt_tokens=reply.prompt_tokens,
-        completion_tokens=reply.completion_tokens,
-        cached_tokens=reply.cached_tokens,
-        latency_s=reply.latency_s,
-        scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
-        meta={
-            "family": item.family,
-            "correct_exact": action in item.gold_actions,
-            "correct_progress": after.score > before.score,
-            "score_before": before.score,
-            **item.meta,
-        },
-    )
+    free = int(item.meta.get("free_steps", 0))
+    rows: list[StepRow] = []
+    observation = before.observation
+    for step in range(free + 1):
+        prompt = scaffold.prompt(state, observation)
+        reply = _call(client, prompt, seed * 100003 + step, sampling, thinking)
+        action = scaffold.parse(state, observation, reply.text)
+        after = env.step(action)
+        last = step == free
+        gold_left = remaining_gold(item.gold_actions, taken[len(item.prefix) :]) if last else []
+        rows.append(
+            StepRow(
+                run_id=run_id,
+                agent_id=agent_id,
+                kind="probe",
+                item_id=item.probe_id,
+                seed=seed,
+                step=step,
+                observation=observation,
+                prompt=prompt,
+                completion=reply.text,
+                action=action,
+                valid=after.valid,
+                reward=after.reward,
+                score=after.score,
+                done=after.done,
+                prompt_tokens=reply.prompt_tokens,
+                completion_tokens=reply.completion_tokens,
+                cached_tokens=reply.cached_tokens,
+                latency_s=reply.latency_s,
+                scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
+                meta={
+                    "family": item.family,
+                    "scored": last,
+                    "correct_exact": action in gold_left if last else None,
+                    "correct_progress": after.score > before.score if last else None,
+                    "score_before": before.score,
+                    **item.meta,
+                },
+            )
+        )
+        taken.append(action)
+        observation, before = after.observation, after
+        if after.done:
+            break
+    return rows

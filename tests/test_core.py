@@ -61,32 +61,22 @@ def test_recovery_probe_build_and_score():
     it = items[0]
     assert it.gold_actions == [f"step {it.meta['failed_step'] + 1}"]
     # a perfect agent redoes the failed step: correct by exact match and by score moving
-    row = run_probe(ScriptedClient(), "a", False, ReAct(), env, it, 0, S, "r")
-    assert row.meta["correct_exact"] and row.meta["correct_progress"]
+    (row,) = run_probe(ScriptedClient(), "a", False, ReAct(), env, it, 0, S, "r")
+    assert row.meta["scored"] and row.meta["correct_exact"] and row.meta["correct_progress"]
     back = from_record(ProbeItem, to_record(it))
     assert back == it
 
 
-def test_compounding_probe_build():
+def test_compounding_probe_free_steps():
     env = ChainEnv()
-    tasks = {t.task_id: t for t in env.catalog(("train",))}
-    task = tasks["chain/chain/6"]
-    own_actions = [
-        "step 1",
-        "step 9",
-        "step 2",
-        "step 3",
-        "step 4",
-    ]  # first error at step 1; the builder reads only `action`
-    episodes = {task.task_id: [{"action": a} for a in own_actions]}
-    items = compounding.build(env, tasks, episodes, "a", depths=(0, 1), rng=random.Random(0))
-    assert {(it.meta["depth"], it.meta["control"]) for it in items} == {(0, False), (0, True), (1, False), (1, True)}
-    own = next(it for it in items if not it.meta["control"] and it.meta["depth"] == 1)
-    assert [a for _, a in own.prefix] == own_actions[:3] and own.gold_actions == [
-        "step 3",
-        "step 4",
-        "step 5",
-        "step 6",
-    ]
-    control = next(it for it in items if it.meta["control"] and it.meta["depth"] == 1)
-    assert control.gold_actions == ["step 4"]
+    items = compounding.build(env, env.catalog(("train",)), per_task=1, depths=(0, 2), rng=random.Random(0))
+    assert {it.meta["depth"] for it in items} == {0, 2} and all(it.gold_actions for it in items)
+    deep = next(it for it in items if it.meta["depth"] == 2)
+    n = deep.meta["prefix_len"]
+    # a perfect agent: two free gold steps, then the scored step is gold too
+    rows = run_probe(ScriptedClient(), "a", False, ReAct(), env, deep, 0, S, "r")
+    assert [r.action for r in rows] == [f"step {n + 1}", f"step {n + 2}", f"step {n + 3}"]
+    assert [r.meta["scored"] for r in rows] == [False, False, True] and rows[-1].meta["correct_exact"]
+    # an always-wrong agent: its free steps add no progress and its last step is wrong
+    rows = run_probe(ScriptedClient(error_rate=1.0), "a", False, ReAct(), env, deep, 0, S, "r")
+    assert rows[-1].meta["correct_exact"] is False and rows[-1].meta["correct_progress"] is False

@@ -77,7 +77,7 @@ def _job(args: tuple) -> list:
     }
     try:
         if isinstance(item, ProbeItem):
-            return [run_probe(item=item, **common)]
+            return run_probe(item=item, **common)
         return run_episode(task=item, max_steps=cfg.get("max_steps", 100), **common)
     except Exception as e:  # noqa: BLE001 - one failed item must not end the run; it is logged and retried on resume
         print(
