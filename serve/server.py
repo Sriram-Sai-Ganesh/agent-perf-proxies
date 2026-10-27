@@ -32,9 +32,15 @@ def main() -> None:
     ap.add_argument("--max-model-len", type=int, default=32768)
     ap.add_argument("--gpu-mem", type=float, default=0.85)
     ap.add_argument("--tp", type=int, default=1)
-    ap.add_argument("--dp", type=int, default=1, help="data-parallel replicas, one per GPU; cuts wall time for many small requests")
-    ap.add_argument("--reasoning-parser", default=None, help="e.g. granite_thinking_parser; splits thinking into reasoning_content")
-    ap.add_argument("--reasoning-parser-plugin", default=None, help="path to a parser module the model ships, if not built in")
+    ap.add_argument(
+        "--dp", type=int, default=1, help="data-parallel replicas, one per GPU; cuts wall time for many small requests"
+    )
+    ap.add_argument(
+        "--reasoning-parser", default=None, help="e.g. granite_thinking_parser; splits thinking into reasoning_content"
+    )
+    ap.add_argument(
+        "--reasoning-parser-plugin", default=None, help="path to a parser module the model ships, if not built in"
+    )
     ap.add_argument("--max-lora-rank", type=int, default=32)
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--startup-timeout", type=int, default=1200)
@@ -60,42 +66,49 @@ def main() -> None:
     if args.adapter:
         cmd += ["--enable-lora", "--max-lora-rank", str(args.max_lora_rank), "--lora-modules", *args.adapter]
     os.makedirs(args.out, exist_ok=True)
-    log = open(os.path.join(args.out, "vllm.log"), "a")
-    print(" ".join(cmd), file=log, flush=True)
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+    with open(os.path.join(args.out, "vllm.log"), "a") as log:
+        print(" ".join(cmd), file=log, flush=True)
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
 
-    def stop(*_):
-        proc.terminate()
-        try:
-            proc.wait(10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        sys.exit(0)
+        def stop(*_):
+            proc.terminate()
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            sys.exit(0)
 
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        signal.signal(signal.SIGTERM, stop)
 
-    base_url = f"http://127.0.0.1:{port}/v1"
-    t0 = time.time()
-    while True:
-        if proc.poll() is not None:
-            raise SystemExit(f"vllm exited with {proc.returncode}; see {log.name}")
-        try:
-            with urllib.request.urlopen(f"{base_url}/models", timeout=5) as r:
-                served = [m["id"] for m in json.load(r)["data"]]
-                break
-        except Exception:  # noqa: BLE001 - not up yet
-            if time.time() - t0 > args.startup_timeout:
-                stop()
-            time.sleep(5)
-    with open(os.path.join(args.out, "endpoint.json"), "w") as f:
-        json.dump(
-            {"base_url": base_url, "base": args.base, "served": served, "adapters": args.adapter, "pid": proc.pid, "host": socket.gethostname()},
-            f,
-            indent=2,
-        )
-    print(f"serving {served} at {base_url} after {time.time() - t0:.0f}s; endpoint.json in {args.out}", flush=True)
-    proc.wait()
+        base_url = f"http://127.0.0.1:{port}/v1"
+        t0 = time.time()
+        while True:
+            if proc.poll() is not None:
+                raise SystemExit(f"vllm exited with {proc.returncode}; see {log.name}")
+            try:
+                with urllib.request.urlopen(f"{base_url}/models", timeout=5) as r:
+                    served = [m["id"] for m in json.load(r)["data"]]
+                    break
+            except Exception:  # noqa: BLE001 - not up yet
+                if time.time() - t0 > args.startup_timeout:
+                    stop()
+                time.sleep(5)
+        with open(os.path.join(args.out, "endpoint.json"), "w") as f:
+            json.dump(
+                {
+                    "base_url": base_url,
+                    "base": args.base,
+                    "served": served,
+                    "adapters": args.adapter,
+                    "pid": proc.pid,
+                    "host": socket.gethostname(),
+                },
+                f,
+                indent=2,
+            )
+        print(f"serving {served} at {base_url} after {time.time() - t0:.0f}s; endpoint.json in {args.out}", flush=True)
+        proc.wait()
 
 
 if __name__ == "__main__":
