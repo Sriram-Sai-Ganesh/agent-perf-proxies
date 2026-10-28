@@ -54,6 +54,9 @@ cluster/run.sh envs/scienceworld -m core.probes.build recovery --env scienceworl
 cluster/run.sh envs/scienceworld -m core.run --config runs/pilot_recovery.yaml
 ```
 
+As a batch job, `cluster/serve_and_run.sbatch` starts the server on the job's GPUs, runs the lines of a command file
+against it and stops it; `cluster/submit_gemma4_thinking.sh` shows the pattern.
+
 Any setting in a run config can be overridden: `-o agents='[granite-4.1-3b/none/react]' -o seeds='[0,1]'`.
 Runs resume: rerunning a config skips `(agent, item, seed)` triples already in `steps.jsonl`.
 

@@ -12,4 +12,6 @@ agents:
   - {id: granite-4.2-8b/none/react, base: granite-4.2-8b, scaffold: react}
   - {id: granite-4.2-8b/none/react-think, base: granite-4.2-8b, scaffold: react, thinking: true}
   - {id: gemma-4-e2b/none/react,    base: gemma-4-e2b,    scaffold: react}
+  - {id: gemma-4-e2b/none/react-think, base: gemma-4-e2b, scaffold: react, thinking: true}
   - {id: gemma-4-12b/none/react,    base: gemma-4-12b,    scaffold: react}
+  - {id: gemma-4-12b/none/react-think, base: gemma-4-12b, scaffold: react, thinking: true}
