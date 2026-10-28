@@ -81,11 +81,14 @@ def run_probe(
     seed: int,
     sampling: Sampling,
     run_id: str,
-) -> StepRow:
+    continuation: int = 0,
+) -> list[StepRow]:
     """Replay the prefix, let the agent act for `meta.free_steps` steps (default 0), then score the next action.
 
-    Only the last step is scored (`meta.scored`), by exact match against the gold actions still untaken and by
-    whether the environment score moved. Returns one row per step taken.
+    One step is scored (`meta.scored`), by exact match against the gold actions still untaken and by whether the
+    environment score moved. With `continuation` > 0 the agent then keeps acting for that many steps, and the scored
+    row also records `correct_progress_within`: whether the score rose above `score_before` at any point from the
+    scored step to the end of the continuation. Returns one row per step taken.
     """
     taken = [a for _, a in item.prefix]
     before = replay(env, item.source_task_id, taken)
@@ -93,13 +96,13 @@ def run_probe(
     free = int(item.meta.get("free_steps", 0))
     rows: list[StepRow] = []
     observation = before.observation
-    for step in range(free + 1):
+    for step in range(free + 1 + continuation):
         prompt = scaffold.prompt(state, observation)
         reply = _call(client, prompt, seed * 100003 + step, sampling, thinking)
         action = scaffold.parse(state, observation, reply.text)
         after = env.step(action)
-        last = step == free
-        gold_left = remaining_gold(item.gold_actions, taken[len(item.prefix) :]) if last else []
+        scored = step == free
+        gold_left = remaining_gold(item.gold_actions, taken[len(item.prefix) :]) if scored else []
         rows.append(
             StepRow(
                 run_id=run_id,
@@ -123,9 +126,9 @@ def run_probe(
                 scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
                 meta={
                     "family": item.family,
-                    "scored": last,
-                    "correct_exact": action in gold_left if last else None,
-                    "correct_progress": after.score > before.score if last else None,
+                    "scored": scored,
+                    "correct_exact": action in gold_left if scored else None,
+                    "correct_progress": after.score > before.score if scored else None,
                     "score_before": before.score,
                     **item.meta,
                 },
@@ -135,4 +138,7 @@ def run_probe(
         observation, before = after.observation, after
         if after.done:
             break
+    if len(rows) > free:
+        rows[free].meta["continuation"] = continuation
+        rows[free].meta["correct_progress_within"] = max(r.score for r in rows[free:]) > rows[free].meta["score_before"]
     return rows
