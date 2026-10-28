@@ -9,3 +9,5 @@ cluster/site.env
 cluster/jobs/
 slurm-*.out
 EXPERIMENTS.md
+.env
+DESIGN_SPEC.md

@@ -5,6 +5,7 @@ probes: $DATA_ROOT/probes/scienceworld/recovery.jsonl
 agents: [granite-4.1-8b/none/react]
 endpoint: {file: $DATA_ROOT/serve/granite-4.1-8b/endpoint.json}
 seeds: [0]
+probe_continuation: 3  # steps the agent keeps acting after the scored step; scores progress within them
 sampling: {temperature: 0.0, max_tokens: 256}
 scaffold: {window: 40}
 workers: 16

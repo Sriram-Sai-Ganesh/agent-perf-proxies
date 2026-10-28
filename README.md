@@ -4,8 +4,8 @@ Which cheap evaluation best predicts a language-model agent's long-horizon perfo
 budget? We run small open models (Granite, Gemma) under different scaffolds and LoRA fine-tunes on
 ScienceWorld (and later ALFWorld), measure their full long-horizon scores, and compare cheap predictors:
 random subsets of long tasks, short tasks, static questions, and single-decision capability probes
-(compounding errors, state tracking, error recovery, deferred instructions). [DESIGN_SPEC.md](DESIGN_SPEC.md)
-is the plan; the proposal is in `tex/` (not tracked).
+(compounding errors, state tracking, error recovery, deferred instructions). The design spec and the proposal
+are kept outside git.
 
 ## Layout
 
@@ -16,7 +16,7 @@ is the plan; the proposal is in `tex/` (not tracked).
 | `serve/` | own | vLLM OpenAI-compatible server for one base model and its LoRA adapters |
 | `configs/` | | `agents.yaml`: the agent pool (base, adapter, scaffold) |
 | `runs/` | | Run configs for `core.run` |
-| `cluster/` | | `run.sh` (pick a venv, source `site.env`), `site.env.example` |
+| `cluster/` | | `run.sh` (pick a venv, source `site.env`), `site.env.example`, batch job scripts, `publish.sh` |
 | `tests/` | root | CPU tests with a scripted environment and a scripted model |
 
 Each folder with a `pyproject.toml` is its own `uv` project and installs `core` by path. Environments, vLLM
@@ -66,6 +66,22 @@ Under `$DATA_ROOT`: `catalogs/<env>.parquet` (tasks with gold trajectories and s
 `probes/<env>/<family>.jsonl` (probe items), `runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action,
 with the prompt sent, the completion, the parsed action, environment score, and token counts), and
 `provenance.json` beside each run (commit, patch of uncommitted changes, config, package versions).
+
+## Sharing results
+
+Finished runs are shared through the private Hugging Face dataset named by `RESULTS_REPO` in `cluster/site.env`,
+as `traces/<SITE>/<run_id>/` holding `steps.parquet`, `provenance.json` and `provenance.diff`. Probe items and
+catalogs live under `configs/` there. Download them, never rebuild them, so every site answers the same items;
+each run's provenance records their sha256 as `items_sha256`.
+
+```bash
+cluster/publish.sh <run_id>...     # refuses a run that has not finished or whose commit is not on origin
+.venv/bin/hf download $RESULTS_REPO --repo-type dataset --local-dir $DATA_ROOT/shared
+cluster/run.sh . -m core.index $DATA_ROOT/shared --tasks $DATA_ROOT/shared/configs/catalogs/scienceworld.parquet
+```
+
+A shared run is never edited or deleted. A bad run is listed in `excluded.txt` at the dataset root, one run id per
+line, which `core.index` skips; a rerun gets a new run id.
 
 ## Status
 

@@ -65,7 +65,7 @@ class ScienceWorld:
             reward=float(reward) / 100.0,
             score=score,
             done=bool(done) or info["score"] < 0,
-            valid=obs.strip() != REJECTED,
+            valid=bool(action.strip()) and obs.strip() != REJECTED,  # ScienceWorld accepts an empty action
             valid_actions=list(info.get("valid") or []),
         )
 

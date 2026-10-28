@@ -80,3 +80,16 @@ def test_compounding_probe_free_steps():
     # an always-wrong agent: its free steps add no progress and its last step is wrong
     rows = run_probe(ScriptedClient(error_rate=1.0), "a", False, ReAct(), env, deep, 0, S, "r")
     assert rows[-1].meta["correct_exact"] is False and rows[-1].meta["correct_progress"] is False
+
+
+def test_probe_continuation_scores_progress_after_the_scored_step():
+    env = ChainEnv()
+    (item,) = recovery.build(env, env.catalog(("train",))[:1], per_task=1, rng=random.Random(0))
+    # wrong twice (the scored step and the first continuation step), then right: no progress at the scored step,
+    # progress within the continuation
+    rows = run_probe(ScriptedClient(error_rate=1.0), "a", False, ReAct(), env, item, 0, S, "r", continuation=2)
+    assert rows[0].meta["scored"] and rows[0].meta["continuation"] == 2
+    assert rows[0].meta["correct_progress"] is False and rows[0].meta["correct_progress_within"] is False
+    rows = run_probe(ScriptedClient(), "a", False, ReAct(), env, item, 0, S, "r", continuation=2)
+    assert len(rows) <= 3 and rows[0].meta["correct_progress"] and rows[0].meta["correct_progress_within"]
+    assert all(not r.meta["scored"] for r in rows[1:])

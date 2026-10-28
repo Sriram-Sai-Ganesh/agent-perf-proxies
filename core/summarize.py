@@ -15,10 +15,10 @@ from core.schema import StepRow, from_record, summarize_episode
 BINS = ((0, 30), (30, 60), (60, 100), (100, 10**9))
 
 
-def episodes(path: str, tasks_path: str | None) -> list[dict]:
+def episodes(rows: list[dict], tasks_path: str | None) -> list[dict]:
     gold = {t["task_id"]: t["gold_len"] for t in store.read_parquet(tasks_path)} if tasks_path else {}
     by_key = defaultdict(list)
-    for r in store.read(path):
+    for r in rows:
         if r["kind"] == "episode":
             by_key[(r["agent_id"], r["item_id"], r["seed"])].append(from_record(StepRow, r))
     out = []
@@ -57,19 +57,20 @@ def print_episodes(eps: list[dict]) -> None:
         print(f"{'':32} stop reasons: {dict(stops)}")
 
 
-def print_probes(path: str) -> None:
-    rows = [r for r in store.read(path) if r["kind"] == "probe" and json.loads(r["meta"]).get("scored", True)]
+def print_probes(rows: list[dict]) -> None:
+    rows = [r for r in rows if r["kind"] == "probe" and json.loads(r["meta"]).get("scored", True)]
     print(
-        f"{'agent':32} {'family':12} {'control':8} {'n':>4} {'exact':>6} {'progress':>8} {'valid':>6} {'tokens/item':>11}"
+        f"{'agent':32} {'family':12} {'control':8} {'n':>4} {'exact':>6} {'progress':>8} {'within':>6} {'valid':>6} {'tokens/item':>11}"
     )
     groups = defaultdict(list)
     for r in rows:
         m = json.loads(r["meta"])
         groups[(r["agent_id"], m["family"], str(m.get("control", "-")))].append((m, r))
     for (agent, family, control), g in sorted(groups.items()):
+        within = [m["correct_progress_within"] for m, _ in g if "correct_progress_within" in m]  # runs before it: "-"
         print(
             f"{agent:32} {family:12} {control:8} {len(g):4d} {mean(m['correct_exact'] for m, _ in g):6.2f} "
-            f"{mean(m['correct_progress'] for m, _ in g):8.2f} {mean(r['valid'] for _, r in g):6.2f} "
+            f"{mean(m['correct_progress'] for m, _ in g):8.2f} {mean(within) if within else '-':>6.2} {mean(r['valid'] for _, r in g):6.2f} "
             f"{mean(r['prompt_tokens'] + r['completion_tokens'] for _, r in g):11.0f}"
         )
 
@@ -79,11 +80,12 @@ def main() -> None:
     ap.add_argument("steps")
     ap.add_argument("--tasks", default=None)
     args = ap.parse_args()
-    eps = episodes(args.steps, args.tasks)
+    rows = store.read(args.steps)
+    eps = episodes(rows, args.tasks)
     if eps:
         print_episodes(eps)
-    if any(r["kind"] == "probe" for r in store.read(args.steps)):
-        print_probes(args.steps)
+    if any(r["kind"] == "probe" for r in rows):
+        print_probes(rows)
 
 
 if __name__ == "__main__":

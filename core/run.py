@@ -7,6 +7,7 @@ Each worker process owns one environment instance and shares the model endpoint.
 """
 
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -77,7 +78,7 @@ def _job(args: tuple) -> list:
     }
     try:
         if isinstance(item, ProbeItem):
-            return run_probe(item=item, **common)
+            return run_probe(item=item, continuation=int(cfg.get("probe_continuation", 0)), **common)
         return run_episode(task=item, max_steps=cfg.get("max_steps", 100), **common)
     except Exception as e:  # noqa: BLE001 - one failed item must not end the run; it is logged and retried on resume
         print(
@@ -102,6 +103,8 @@ def main() -> None:
     cfg = load_config(args.config, args.override)
     out_dir = expand(cfg.get("out", "$DATA_ROOT/runs/" + cfg["run_id"]))
     jsonl = os.path.join(out_dir, "steps.jsonl")
+    with open(expand(cfg.get("probes") or cfg["tasks"]), "rb") as f:
+        cfg["items_sha256"] = hashlib.sha256(f.read()).hexdigest()  # proves two sites answered the same items
     record = provenance.start(out_dir, cfg)
 
     agents = load_agents(cfg.get("agents_file", "configs/agents.yaml"), cfg["agents"])
