@@ -1,5 +1,7 @@
 """Run one episode or answer one probe, producing step rows."""
 
+from dataclasses import replace
+
 from core.env import Environment, replay
 from core.llm import Client, Sampling
 from core.probes.compounding import remaining_gold
@@ -10,7 +12,31 @@ from core.schema import ProbeItem, StepRow, TaskRow
 def _call(client: Client, prompt: list[dict], seed: int, sampling: Sampling, thinking: bool):
     # always sent: Granite 4.2's template defaults enable_thinking to true; templates without the variable ignore it
     extra = {"chat_template_kwargs": {"enable_thinking": thinking}}
-    return client.chat(prompt, seed=seed, sampling=sampling, extra=extra)
+    reply = client.chat(prompt, seed=seed, sampling=sampling, extra=extra)
+    if not (thinking and reply.raw.get("finish_reason") == "length"):
+        return reply
+    # Thinking that fills the output budget is almost always a loop restating one action, and leaves no action.
+    # Ask again with thinking off so the step gets one; the step is charged for both calls.
+    retry = client.chat(
+        prompt, seed=seed, sampling=sampling, extra={"chat_template_kwargs": {"enable_thinking": False}}
+    )
+    return replace(
+        retry,
+        prompt_tokens=reply.prompt_tokens + retry.prompt_tokens,
+        completion_tokens=reply.completion_tokens + retry.completion_tokens,
+        cached_tokens=reply.cached_tokens + retry.cached_tokens,
+        latency_s=reply.latency_s + retry.latency_s,
+        reasoning=reply.reasoning,
+        raw={**retry.raw, "retried_without_thinking": True},
+    )
+
+
+def _scaffold_state(reply) -> dict:
+    """The thinking text, and whether it was cut off and the step retried without thinking."""
+    state = {"reasoning": reply.reasoning} if reply.reasoning else {}
+    if reply.raw.get("retried_without_thinking"):
+        state["retried_without_thinking"] = True
+    return state
 
 
 def run_episode(
@@ -56,7 +82,7 @@ def run_episode(
                 completion_tokens=reply.completion_tokens,
                 cached_tokens=reply.cached_tokens,
                 latency_s=reply.latency_s,
-                scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
+                scaffold_state=_scaffold_state(reply),
             )
         )
         invalid = 0 if result.valid else invalid + 1
@@ -123,7 +149,7 @@ def run_probe(
                 completion_tokens=reply.completion_tokens,
                 cached_tokens=reply.cached_tokens,
                 latency_s=reply.latency_s,
-                scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
+                scaffold_state=_scaffold_state(reply),
                 meta={
                     "family": item.family,
                     "scored": scored,

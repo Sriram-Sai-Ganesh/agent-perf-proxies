@@ -4,7 +4,8 @@
 #   cluster/submit.sh <agent id> <episodes|probes> <run suffix> [server.py args...]
 #   GPUS=2 cluster/submit.sh gemma-4-12b/none/react-think probes g412bthink_16k --dp 2 --reasoning-parser gemma4
 # Run ids are pilot_sw_long_<suffix>, or pilot_recovery_<suffix> and pilot_compounding_<suffix>.
-# Output budget: 16384 tokens for a thinking agent (decision D8.3), 256 otherwise.
+# Output budget: 8192 tokens for a thinking agent, which the runner retries without thinking when it fills them
+# (decision D8.3), 256 otherwise.
 set -euo pipefail
 cd "$(dirname "$0")/.." && source cluster/site.env
 agent="${1:?agent id from configs/agents.yaml}"; kind="${2:?episodes or probes}"; suffix="${3:?run id suffix}"; shift 3
@@ -15,7 +16,7 @@ a = next(a for a in cfg["agents"] if a["id"] == sys.argv[1])
 print(cfg["bases"][a["base"]]["hub_id"], a.get("thinking", False))
 PY
 )
-[ "$thinking" = True ] && max_tokens=16384 || max_tokens=256
+[ "$thinking" = True ] && max_tokens=8192 || max_tokens=256
 run="cluster/run.sh envs/scienceworld -m core.run"
 commands="$DATA_ROOT/logs/${suffix}_$kind.txt"
 if [ "$kind" = episodes ]; then

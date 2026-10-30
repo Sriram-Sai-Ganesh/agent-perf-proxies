@@ -1,4 +1,5 @@
 import random
+from dataclasses import replace
 
 from fakes import ChainEnv, ScriptedClient
 
@@ -93,3 +94,28 @@ def test_probe_continuation_scores_progress_after_the_scored_step():
     rows = run_probe(ScriptedClient(), "a", False, ReAct(), env, item, 0, S, "r", continuation=2)
     assert len(rows) <= 3 and rows[0].meta["correct_progress"] and rows[0].meta["correct_progress_within"]
     assert all(not r.meta["scored"] for r in rows[1:])
+
+
+class LoopingThinkingClient(ScriptedClient):
+    """Fills the output budget whenever thinking is on, like a thinking model stuck restating one action."""
+
+    def chat(self, messages, seed, sampling, extra=None):
+        reply = super().chat(messages, seed, sampling, extra)
+        if extra["chat_template_kwargs"]["enable_thinking"]:
+            return replace(
+                reply,
+                text="",
+                reasoning="I'll try step 1. " * 9,
+                completion_tokens=100,
+                raw={"finish_reason": "length"},
+            )
+        return reply
+
+
+def test_thinking_cut_off_at_the_budget_is_retried_without_thinking():
+    env, task = ChainEnv(), ChainEnv().catalog(splits=("test",))[0]
+    client = LoopingThinkingClient()
+    rows = run_episode(client, "a", True, ReAct(), env, task, 0, S, "r", max_steps=20)
+    assert rows[-1].score == 1.0 and client.calls == 2 * len(rows)
+    assert all(r.scaffold_state["retried_without_thinking"] for r in rows)
+    assert all(r.completion_tokens == 108 and r.scaffold_state["reasoning"].startswith("I'll try") for r in rows)
