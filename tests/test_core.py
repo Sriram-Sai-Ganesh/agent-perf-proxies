@@ -1,5 +1,6 @@
 import random
 
+import pytest
 from fakes import ChainEnv, ScriptedClient
 
 from core import store
@@ -7,7 +8,7 @@ from core.llm import Sampling
 from core.probes import compounding, recovery
 from core.runner import run_episode, run_probe
 from core.scaffolds.react import ReAct, parse_action
-from core.schema import ProbeItem, StepRow, from_record, summarize_episode, to_record
+from core.schema import ProbeItem, StepRow, TaskRow, from_record, summarize_episode, to_record
 from core.suites import select
 
 S = Sampling()
@@ -52,6 +53,37 @@ def test_select_caps_per_type():
     tasks = [to_record(t) for t in ChainEnv().catalog()]
     assert [t["task_id"] for t in select(tasks, "test", min_gold=6)] == ["chain/chain/8"]
     assert len(select(tasks, "train", cap_per_type=1)) == 1
+
+
+def _gold_task(variation: int, gold_scores: list[float] | None, task_type: str = "t") -> dict:
+    meta = {} if gold_scores is None else {"gold_scores": gold_scores}
+    row = TaskRow(f"x/{task_type}/{variation}", "x", task_type, str(variation), "dev", 3, ["a"], "d", meta)
+    return to_record(row)
+
+
+def test_select_by_gold_score_at_reference_step():
+    tasks = [_gold_task(0, [0.0, 0.05, 0.5]), _gold_task(1, [0.2, 0.3, 1.0]), _gold_task(2, [0.0, 0.0, 0.0])]
+    kept = select(tasks, "dev", ref_step=2, min_ref_score=0.1)
+    assert [t["task_id"] for t in kept] == ["x/t/1"]
+    assert len(select(tasks, "dev", ref_step=3, min_ref_score=0.1)) == 2
+    assert len(select(tasks, "dev", ref_step=2)) == 3  # both arguments are needed to filter
+
+
+def test_select_gold_score_uses_last_value_for_short_gold_path():
+    tasks = [_gold_task(0, [0.0, 0.4]), _gold_task(1, [0.0, 0.05]), _gold_task(2, [])]
+    kept = select(tasks, "dev", ref_step=15, min_ref_score=0.1)
+    assert [t["task_id"] for t in kept] == ["x/t/0"]
+
+
+def test_select_gold_score_filter_comes_before_cap():
+    tasks = [_gold_task(v, [0.0] if v < 5 else [0.5]) for v in range(6)]
+    kept = select(tasks, "dev", ref_step=1, min_ref_score=0.1, cap_per_type=1)
+    assert [t["task_id"] for t in kept] == ["x/t/5"]
+
+
+def test_select_gold_score_filter_needs_gold_scores():
+    with pytest.raises(SystemExit, match="gold_scores"):
+        select([_gold_task(0, None)], "dev", ref_step=15, min_ref_score=0.1)
 
 
 def test_recovery_probe_build_and_score():
