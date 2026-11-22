@@ -62,9 +62,10 @@ Runs resume: rerunning a config skips `(agent, item, seed)` triples already in `
 
 ## Outputs
 
-Under `$DATA_ROOT`: `catalogs/<env>.parquet` (tasks with gold trajectories and splits),
-`probes/<env>/<family>.jsonl` (probe items), `runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action,
-with the prompt sent, the completion, the parsed action, environment score, and token counts), and
+Under `$DATA_ROOT`: `catalogs/<env>.parquet` (tasks with gold trajectories and splits; each row's `meta` holds
+`gold_scores`, the gold path's score after each step), `probes/<env>/<family>.jsonl` (probe items),
+`runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action, with the prompt sent, the completion, the parsed
+action, environment score, and token counts), and
 `provenance.json` beside each run (commit, patch of uncommitted changes, config, package versions).
 
 ## Sharing results
@@ -86,5 +87,6 @@ line, which `core.index` skips; a rerun gets a new run id.
 ## Status
 
 Working: ScienceWorld adapter and catalog, ReAct scaffold, episode and probe runner with resume, recovery and
-compounding probe builders, vLLM launcher, CPU tests. Not yet: ALFWorld, Notepad and Verify scaffolds, state
-and deferred probes, static items (B3), LoRA training, analysis.
+compounding probe builders, B2 (short tasks cut off after 20 steps: `runs/b2_sw_cutoff.yaml`, and
+`runs/b2_sw_short_plain.yaml` for comparison), vLLM launcher, CPU tests. Not yet: ALFWorld, Notepad and Verify
+scaffolds, state and deferred probes, static items (B3), LoRA training, analysis.
