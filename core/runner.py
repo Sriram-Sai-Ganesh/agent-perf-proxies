@@ -1,4 +1,4 @@
-"""Run one episode or answer one probe, producing step rows."""
+"""Run one episode, answer one probe, or answer one plain test question, producing step rows."""
 
 from dataclasses import replace
 
@@ -6,7 +6,8 @@ from core.env import Environment, replay
 from core.llm import Client, Sampling
 from core.probes.compounding import remaining_gold
 from core.scaffolds import Scaffold
-from core.schema import ProbeItem, StepRow, TaskRow
+from core.schema import ProbeItem, StaticItem, StepRow, TaskRow
+from core.static.score import build_prompt, extract_answer, is_correct
 
 
 def _call(client: Client, prompt: list[dict], seed: int, sampling: Sampling, thinking: bool):
@@ -168,3 +169,52 @@ def run_probe(
         rows[free].meta["continuation"] = continuation
         rows[free].meta["correct_progress_within"] = max(r.score for r in rows[free:]) > rows[free].meta["score_before"]
     return rows
+
+
+def run_static(
+    client: Client,
+    agent_id: str,
+    thinking: bool,
+    item: StaticItem,
+    seed: int,
+    sampling: Sampling,
+    run_id: str,
+) -> list[StepRow]:
+    """Ask one plain test question, with no scaffold and no environment. Returns one row: the extracted answer and
+    whether it is correct (reward and score are 1.0 or 0.0)."""
+    prompt = build_prompt(item)
+    reply = _call(client, prompt, seed * 100003, sampling, thinking)
+    extracted = extract_answer(reply.text, item.answer_type)
+    correct = is_correct(item, extracted)
+    return [
+        StepRow(
+            run_id=run_id,
+            agent_id=agent_id,
+            kind="static",
+            item_id=item.item_id,
+            seed=seed,
+            step=0,
+            observation=item.question,
+            prompt=prompt,
+            completion=reply.text,
+            action=extracted or "",
+            valid=extracted is not None,
+            reward=1.0 if correct else 0.0,
+            score=1.0 if correct else 0.0,
+            done=True,
+            prompt_tokens=reply.prompt_tokens,
+            completion_tokens=reply.completion_tokens,
+            cached_tokens=reply.cached_tokens,
+            latency_s=reply.latency_s,
+            scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
+            meta={
+                "source": item.source,
+                "subset": item.subset,
+                "answer_type": item.answer_type,
+                "gold": item.answer,
+                "extracted": extracted,
+                "correct": correct,
+                "finish_reason": reply.raw.get("finish_reason"),
+            },
+        )
+    ]

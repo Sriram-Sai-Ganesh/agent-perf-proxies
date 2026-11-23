@@ -88,6 +88,8 @@ line, which `core.index` skips; a rerun gets a new run id.
 
 Working: ScienceWorld adapter and catalog, ReAct scaffold, episode and probe runner with resume, recovery and
 compounding probe builders, B2 (short tasks cut off after 20 steps: `runs/b2_sw_cutoff.yaml`, and
-`runs/b2_sw_short_plain.yaml` for comparison), vLLM launcher, CPU tests. Not yet: ALFWorld, Notepad and Verify
-scaffolds, state and deferred probes, B1, static items (B3), LoRA training, analysis. `docs/baselines.md`
-records what was decided for B1, B2 and B3 and what is still open.
+`runs/b2_sw_short_plain.yaml` for comparison), B1 (`analysis/features.py b1`), B3 (pool built once with
+`python -m core.static.build --out $DATA_ROOT/static/pool.jsonl`, answered with `runs/b3_static.yaml` or
+`cluster/submit.sh <agent> static <suffix>`, PACE question choice in `analysis/pace.py`), vLLM launcher, CPU tests.
+Not yet: ALFWorld, Notepad and Verify scaffolds, state and deferred probes, LoRA training, prediction and metrics.
+`docs/baselines.md` records what was decided for B1, B2 and B3 and what is still open.

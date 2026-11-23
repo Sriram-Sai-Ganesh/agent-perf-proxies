@@ -7,9 +7,9 @@ still open. Last updated 2026-11-23.
 
 | Baseline | What it measures | Status |
 | --- | --- | --- |
-| B1 | the mean score over a few of the agent's long episodes | decided, not yet coded |
+| B1 | the mean score over a few of the agent's long episodes | coded (`analysis/features.py b1`); needs the long runs |
 | B2 | the agent's score on long tasks cut off after 20 steps | coded (`analysis/features.py b2`, `runs/b2_sw_cutoff.yaml`) |
-| B3 | the share of non-agentic test questions (maths, general knowledge, reasoning) the plain model gets right | decided, not yet coded |
+| B3 | the share of non-agentic test questions (maths, general knowledge, reasoning) the plain model gets right | coded (`core.static.build`, `runs/b3_static.yaml`, `analysis/features.py b3`, `analysis/pace.py`); pool not yet built |
 
 ## Shared rules
 
@@ -73,7 +73,10 @@ on large models, and many of its questions need code to be run or images.
   - `analysis/features.py` writes each agent's result on every pool question (right or wrong, and tokens
     spent), not a single number.
   - The prediction step (`analysis/predict.py`, owned by whoever fits the predictors) chooses the 100 questions
-    per fold, then predicts from the held-out agent's answers on them.
+    per fold with `analysis.pace.choose_questions`, then uses the held-out agent's accuracy on them
+    (`analysis.pace.accuracy_on`) as its feature, in the same ridge regression as the other baselines. Only PACE's
+    ranking of questions is used, not its second question set or its tuned blend of the two, because with about 14
+    models there is nothing to tune them on.
 - **Random control:** 100 questions drawn at random from the same pool give a second version of B3 at no extra
   cost, scored as plain accuracy. It shows whether PACE's choosing beats random choice for small models, which
   Yauney et al. (2026) found it often does not for closely matched models.

@@ -22,12 +22,12 @@ class TaskRow:
 
 @dataclass
 class StepRow:
-    """One agent action: a step of an episode, or a probe answer."""
+    """One agent action: a step of an episode, a probe answer, or the answer to a plain test question."""
 
     run_id: str
     agent_id: str
-    kind: str  # episode | probe
-    item_id: str  # task_id for episodes, probe_id for probes
+    kind: str  # episode | probe | static
+    item_id: str  # task_id for episodes, probe_id for probes, item_id for static
     seed: int
     step: int
     observation: str
@@ -60,6 +60,20 @@ class ProbeItem:
     final_observation: str  # what the agent sees when asked for the next action
     gold_actions: list[str]  # any one counts as correct
     distractors: list[str] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
+
+
+@dataclass
+class StaticItem:
+    """An ordinary test question with a known answer, asked with no scaffold and no environment."""
+
+    item_id: str  # mmlu_pro/{question_id} | gsm8k/{row index} | bbh/{task}/{row index}
+    source: str  # mmlu_pro | gsm8k | bbh
+    subset: str  # MMLU-Pro category, BBH task, or "main" for gsm8k
+    question: str
+    choices: list[str]  # the answer options in order; empty unless the question is multiple choice
+    answer: str  # a letter A-J, a number as a string, or the target text, by answer_type
+    answer_type: str  # letter | number | text
     meta: dict = field(default_factory=dict)
 
 
