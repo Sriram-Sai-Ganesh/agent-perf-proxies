@@ -87,6 +87,13 @@ def test_fewer_than_three_agents_is_an_error():
         choose_questions(answers, {a: SCORES[a] for a in AGENTS[:2]})
 
 
+def test_a_scored_agent_without_answers_is_an_error_that_names_it():
+    answers = table()
+    del answers["agent5"]
+    with pytest.raises(ValueError, match="agent5"):
+        choose_questions(answers, SCORES)
+
+
 def test_accuracy_on_counts_only_the_listed_questions_the_agent_answered():
     right = {"q1": True, "q2": False, "q3": True}
     assert accuracy_on(right, ["q1", "q2"]) == 0.5

@@ -55,6 +55,9 @@ def choose_questions(correct: dict[str, dict[str, bool]], scores: dict[str, floa
     agents = sorted(scores)
     if len(agents) < MIN_AGENTS:
         raise ValueError(f"choosing questions needs at least {MIN_AGENTS} agents with scores, got {len(agents)}")
+    unanswered = [a for a in agents if a not in correct]
+    if unanswered:
+        raise ValueError(f"no answers to the questions for scored agents: {', '.join(unanswered)}")
     item_ids = sorted(set.intersection(*(set(correct[a]) for a in agents)))
     table = np.array([[float(correct[a][i]) for i in item_ids] for a in agents]).reshape(len(agents), len(item_ids))
     _, singular_values, components = np.linalg.svd(table, full_matrices=False)

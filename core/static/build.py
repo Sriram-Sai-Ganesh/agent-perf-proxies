@@ -16,6 +16,7 @@ from huggingface_hub import HfApi, hf_hub_download
 
 from core import store
 from core.schema import StaticItem
+from core.static.score import INTEGER, OPTION_ANSWER
 
 MMLU_PRO_REPO = "TIGER-Lab/MMLU-Pro"
 MMLU_PRO_FILE = "data/test-00000-of-00001.parquet"
@@ -73,21 +74,56 @@ def gsm8k_items(rows: list[dict]) -> list[StaticItem]:
     ]
 
 
+def bbh_answer_format(task: str, targets: list[str]) -> str | None:
+    """One sentence saying what kind of answer a BBH task expects, chosen from the task's answers; None if no kind fits.
+
+    The kinds: an option letter such as "(A)" (most answers are one), one word out of yes/no, true/false or
+    valid/invalid (spelled in upper or lower case as the answers are), a whole number, the closing brackets of the
+    dyck_languages task, and the sorted words of the word_sorting task.
+    """
+    if sum(bool(OPTION_ANSWER.match(t)) for t in targets) > len(targets) / 2:
+        return "Answer with the letter of the option, like `Answer: (A)`."
+    for pair in (("yes", "no"), ("true", "false"), ("valid", "invalid")):
+        if targets and {t.lower() for t in targets} <= set(pair):
+            words = [w.capitalize() if targets[0][:1].isupper() else w for w in pair]
+            return f"Answer with one word: {words[0]} or {words[1]}."
+    if targets and all(INTEGER.fullmatch(t.strip()) for t in targets):
+        return "Answer with a number only."
+    if task == "dyck_languages":
+        return "Answer with the closing brackets only, separated by spaces."
+    if task == "word_sorting":
+        return "Answer with the words in sorted order, separated by spaces."
+    return None
+
+
 def bbh_items(rows_by_task: dict[str, list[dict]]) -> list[StaticItem]:
-    """BBH rows (input, target) of each task as text items, numbered by row index within the task."""
-    return [
-        StaticItem(
-            item_id=f"bbh/{task}/{i}",
-            source="bbh",
-            subset=task,
-            question=r["input"],
-            choices=[],
-            answer=r["target"],
-            answer_type="text",
+    """BBH rows (input, target) of each task as text items, numbered by row index within the task.
+
+    In a task where most targets are an option letter in brackets such as "(A)", rows whose target is not one are left
+    out, because the reply cannot be checked against them (for example movie_recommendation's "Monsters, Inc"); the
+    other rows keep their original row index. Each item's meta["format"] is a sentence for the question saying what
+    kind of answer its task expects, chosen from the targets of the task's rows.
+    """
+    items = []
+    for task, rows in sorted(rows_by_task.items()):
+        numbered = list(enumerate(rows))
+        if sum(bool(OPTION_ANSWER.match(r["target"])) for r in rows) > len(rows) / 2:
+            numbered = [(i, r) for i, r in numbered if OPTION_ANSWER.match(r["target"])]
+        answer_format = bbh_answer_format(task, [r["target"] for _, r in numbered])
+        items.extend(
+            StaticItem(
+                item_id=f"bbh/{task}/{i}",
+                source="bbh",
+                subset=task,
+                question=r["input"],
+                choices=[],
+                answer=r["target"],
+                answer_type="text",
+                meta={"format": answer_format} if answer_format else {},
+            )
+            for i, r in numbered
         )
-        for task, rows in sorted(rows_by_task.items())
-        for i, r in enumerate(rows)
-    ]
+    return items
 
 
 def sample_evenly(items: list[StaticItem], n: int, seed: int) -> list[StaticItem]:

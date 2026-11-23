@@ -3,7 +3,14 @@ from core.llm import Reply, Sampling
 from core.run import expand, item_id_of, items_file, items_of
 from core.runner import run_static
 from core.schema import StaticItem, StepRow, from_record, to_record
-from core.static.build import bbh_items, gsm8k_final_number, gsm8k_items, mmlu_pro_items, sample_evenly
+from core.static.build import (
+    bbh_answer_format,
+    bbh_items,
+    gsm8k_final_number,
+    gsm8k_items,
+    mmlu_pro_items,
+    sample_evenly,
+)
 from core.static.score import build_prompt, extract_answer, is_correct
 
 S = Sampling()
@@ -47,7 +54,9 @@ def test_extract_answer_from_the_last_answer_line():
     assert extract_answer("**Answer:** C", "letter") == "C"
     assert extract_answer("**Answer: C**", "letter") == "C"
     assert extract_answer("## Answer: **(D)**", "letter") == "(D)"
-    assert extract_answer("Answer: $1,234.00\nthanks", "number") == "$1,234.00"
+    assert (
+        extract_answer("Answer: $1,234.00\nthanks", "number") == "1,234.00"
+    )  # the "$" is LaTeX math delimiter or currency, removed either way
     assert extract_answer("Answer: (A)", "text") == "(A)"
 
 
@@ -96,6 +105,201 @@ def test_is_correct_bbh_option_compares_the_leading_option_letter():
     assert is_correct(item("text", "(K)"), "K.")
     assert not is_correct(item("text", "(C)"), "(B) the robin")
     assert not is_correct(item("text", "(A)"), "A robin")  # the article "A", not option A
+
+
+def test_latex_around_the_answer_is_removed():
+    assert extract_answer("Answer: \\boxed{C}", "letter") == "C"
+    assert extract_answer("Answer: $\\boxed{42}$", "number") == "42"
+    assert extract_answer("Answer: \\text{Yes}", "text") == "Yes"
+    assert extract_answer("Answer: \\(\\mathrm{B}\\)", "letter") == "B"
+    assert extract_answer("Answer: \\[ 7 \\]", "number") == "7"
+
+
+def test_a_boxed_answer_without_an_answer_line_is_the_last_boxed_one():
+    replies = ["\\boxed{C}", "$\\boxed{C}$", "\\(\\boxed{C}\\)", "\\boxed{\\text{C}}", "\\boxed{A} no, \\boxed{C}."]
+    assert all(extract_answer(reply, "letter") == "C" for reply in replies)
+    assert extract_answer("It is $\\boxed{42}$ in all.", "number") == "42"
+    assert extract_answer("Answer: B\n\\boxed{C}", "letter") == "B"  # an answer line comes first
+    assert extract_answer("\\boxed{}\nIt is (B)", "letter") == "B"  # an empty box falls back
+
+
+def test_is_correct_ignores_latex():
+    assert is_correct(item("letter", "C"), "\\boxed{C}") and is_correct(item("number", "42"), "$\\boxed{42}$")
+    assert is_correct(item("text", "(B)"), "\\text{(B)}") and is_correct(item("text", "Yes"), "$\\text{Yes}$")
+    assert not is_correct(item("letter", "C"), extract_answer("Answer: \\boxed{B}", "letter"))
+    assert not is_correct(item("number", "42"), extract_answer("Answer: $\\boxed{43}$", "number"))
+
+
+def test_final_answer_counts_as_an_answer_line():
+    assert extract_answer("Final answer: C", "letter") == "C"
+    assert extract_answer("**Final Answer:** 42", "number") == "42"
+    assert extract_answer("## Final answer: (B)", "letter") == "(B)"
+    assert extract_answer("Answer: B\nFinal answer: C", "letter") == "C"
+    assert extract_answer("My final answer was wrong", "text") == "My final answer was wrong"  # no answer line
+
+
+def test_quotes_around_the_answer_are_removed():
+    assert extract_answer('Answer: "Yes"', "text") == "Yes"
+    assert extract_answer("Answer: 'Yes'", "text") == "Yes"
+    assert extract_answer("Answer: `Yes`", "text") == "Yes"
+    assert extract_answer('Answer: **"Yes"**', "text") == "Yes"
+    assert extract_answer("Answer: it's", "text") == "it's"
+    assert extract_answer('Answer: "Yes', "text") == '"Yes'
+
+
+def test_is_correct_letter_accepts_option_and_choice_words():
+    gold = item("letter", "C")
+    assert all(is_correct(gold, got) for got in ["option C", "Option (C)", "choice C", "choice (c)", "OPTION c."])
+    assert all(is_correct(gold, got) for got in ["C", "(C)", "C.", "C) foo", "C. Mitochondria", "c", "[C]", "C: yes"])
+    assert not is_correct(gold, "option B") and not is_correct(gold, "options C") and not is_correct(gold, "optionC")
+    assert extract_answer("Answer: option C", "letter") == "option C"
+
+
+def test_is_correct_letter_does_not_read_the_start_of_a_word_as_a_letter():
+    assert not is_correct(item("letter", "I"), "I think C")
+    assert not is_correct(item("letter", "C"), "I think C")
+    assert not is_correct(item("letter", "I"), "It is C")
+    assert not is_correct(item("letter", "A"), "A robin")
+    assert not is_correct(item("letter", "C"), "Cat") and not is_correct(item("letter", "B"), "Because")
+    assert is_correct(item("letter", "I"), "I") and is_correct(item("letter", "I"), "(I)")
+    assert is_correct(item("letter", "I"), "option I") and is_correct(item("letter", "I"), "I.")
+
+
+def test_is_correct_letter_followed_by_more_text_still_counts():
+    gold = item("letter", "C")
+    assert all(is_correct(gold, got) for got in ["C - Mitochondria", "C is correct", "C;", "C*", "C (mitochondria)"])
+    assert not is_correct(gold, "B is correct")
+    assert not is_correct(item("letter", "C"), extract_answer("Answer: I think C", "letter"))
+    assert not is_correct(item("letter", "I"), extract_answer("Answer: I think C", "letter"))
+
+
+def test_is_correct_bbh_option_accepts_a_lower_case_letter_in_brackets():
+    assert is_correct(item("text", "(B)"), "(b)") and is_correct(item("text", "(B)"), "(b) the robin")
+    assert is_correct(item("text", "(B)"), "(B)") and is_correct(item("text", "(B)"), "B.")
+    assert not is_correct(item("text", "(B)"), "(a)") and not is_correct(item("text", "(B)"), "b robin")
+    assert not is_correct(item("text", "(A)"), "a robin")
+
+
+def test_is_correct_one_word_answers_compare_the_first_word():
+    cases = [
+        ("Yes", "Yes, because it is", "No, because"),
+        ("No", "No. The path", "Not sure"),
+        ("True", "true", "False"),
+    ]
+    for gold, right, wrong in cases:
+        assert is_correct(item("text", gold), right) and not is_correct(item("text", gold), wrong)
+    assert is_correct(item("text", "valid"), "Valid - the argument holds")
+    assert not is_correct(item("text", "valid"), "invalid") and not is_correct(item("text", "Yes"), "Not sure")
+    assert not is_correct(item("text", "Yes"), "") and not is_correct(item("text", "Yes"), "Answer yes")
+    assert is_correct(item("text", "Yes"), extract_answer('Answer: "Yes"', "text"))
+    assert not is_correct(item("text", "Yes"), extract_answer("Answer: No, because ...", "text"))
+
+
+def dyck(answer: str) -> StaticItem:
+    return StaticItem("bbh/dyck_languages/0", "bbh", "dyck_languages", "q", [], answer, "text")
+
+
+def test_is_correct_dyck_languages_ignores_spaces_and_commas():
+    assert all(is_correct(dyck("] ) }"), got) for got in ["])}", "], ), }", "] ) }", "]  )\n}", "]),}"])
+    assert not is_correct(dyck("] ) }"), "[ ) }") and not is_correct(dyck("] ) }"), "] )")
+    assert not is_correct(dyck("] ) }"), "} ) ]") and not is_correct(dyck("] ) }"), None)
+    assert not is_correct(dyck("] ) }"), extract_answer("Answer: [ ) }", "text"))
+    assert not is_correct(item("text", "] ) }"), "])}")  # other tasks still compare the spaces
+
+
+def sorting(answer: str) -> StaticItem:
+    return StaticItem("bbh/word_sorting/0", "bbh", "word_sorting", "q", [], answer, "text")
+
+
+def test_is_correct_word_sorting_compares_word_lists():
+    gold = sorting("apple banana")
+    assert all(is_correct(gold, got) for got in ["apple, banana", "apple banana", "Apple  Banana.", "apple,banana"])
+    assert not is_correct(gold, "banana apple") and not is_correct(gold, "apple")
+    assert not is_correct(gold, "apple banana cherry") and not is_correct(gold, None)
+    assert not is_correct(item("text", "apple banana"), "apple, banana")  # other tasks compare the text
+
+
+def test_is_correct_whole_number_text_answers_use_the_number_rules():
+    cases = [("8", "8 instruments", "9 instruments"), ("-18", "-18", "18"), ("-18", "\N{MINUS SIGN}18", "-81")]
+    for gold, right, wrong in cases:
+        assert is_correct(item("text", gold), right) and not is_correct(item("text", gold), wrong)
+    assert is_correct(item("text", "1234"), "$1,234.00") and not is_correct(item("text", "12"), "120")
+    assert not is_correct(item("text", "8"), "eight") and not is_correct(item("text", "8"), None)
+
+
+def test_is_correct_number_reads_unicode_minus_leading_dot_and_equals():
+    gold = item("number", "-3")
+    assert is_correct(gold, "\N{MINUS SIGN}3") and is_correct(gold, "-3") and not is_correct(gold, "3")
+    assert is_correct(item("number", "0.5"), ".5") and is_correct(item("number", "-0.5"), "-.5")
+    assert is_correct(item("number", "0.5"), "0.5") and not is_correct(item("number", "5"), ".5")
+    times = "\N{MULTIPLICATION SIGN}"
+    assert is_correct(item("number", "42"), f"6 {times} 7 = 42")
+    assert is_correct(item("number", "42"), f"x = 6 {times} 7 = 42 apples")
+    assert not is_correct(item("number", "6"), f"6 {times} 7 = 42")
+    assert not is_correct(item("number", "7"), "7.5") and is_correct(item("number", "7"), "7.")
+
+
+def test_the_fallback_without_an_answer_line_is_unchanged():
+    assert extract_answer("so it is .5 maybe", "number") is None
+    assert extract_answer("so it is \N{MINUS SIGN}5", "number") == "5"
+    assert extract_answer("I think the answer is C or D", "letter") == "D"
+
+
+def test_build_prompt_adds_the_answer_format_hint_when_the_item_has_one():
+    plain = item("text", "(A)")
+    hint = "Answer with one word: Yes or No."
+    hinted = StaticItem("bbh/t/0", "bbh", "t", "What?", [], "(A)", "text", {"format": hint})
+    assert build_prompt(hinted)[0]["content"] == build_prompt(plain)[0]["content"] + "\n\n" + hint
+    assert build_prompt(item("letter", "B", ["x", "y"]))[0]["content"].endswith("`Answer: <letter>`.")
+    assert build_prompt(item("number", "4"))[0]["content"].endswith("`Answer: <number>`.")
+
+
+def test_bbh_items_leave_out_rows_without_an_option_letter_in_an_option_task():
+    rows = {
+        "movie_recommendation": [
+            {"input": "m0", "target": "(A)"},
+            {"input": "m1", "target": "Monsters, Inc"},
+            {"input": "m2", "target": "(C)"},
+        ],
+        "navigate": [{"input": "n0", "target": "No"}, {"input": "n1", "target": "(B)"}],  # not an option task
+    }
+    assert [it.item_id for it in bbh_items(rows)] == [
+        "bbh/movie_recommendation/0",
+        "bbh/movie_recommendation/2",
+        "bbh/navigate/0",
+        "bbh/navigate/1",
+    ]
+
+
+def test_bbh_items_store_the_answer_format_of_the_task_not_of_the_item():
+    rows = {
+        "hyperbaton": [{"input": "h", "target": "(A)"}, {"input": "h", "target": "(B)"}],
+        "web_of_lies": [{"input": "w", "target": "Yes"}, {"input": "w", "target": "No"}],
+        "object_counting": [{"input": "o", "target": "8"}, {"input": "o", "target": "10"}],
+        "mystery": [{"input": "x", "target": "something"}],
+    }
+    formats = {it.subset: it.meta.get("format") for it in bbh_items(rows)}
+    assert formats == {
+        "hyperbaton": "Answer with the letter of the option, like `Answer: (A)`.",
+        "web_of_lies": "Answer with one word: Yes or No.",
+        "object_counting": "Answer with a number only.",
+        "mystery": None,
+    }
+
+
+def test_bbh_answer_format_kinds():
+    assert bbh_answer_format("t", ["True", "False", "True"]) == "Answer with one word: True or False."
+    assert bbh_answer_format("t", ["valid", "invalid"]) == "Answer with one word: valid or invalid."
+    assert bbh_answer_format("t", ["yes", "no"]) == "Answer with one word: yes or no."
+    assert bbh_answer_format("t", ["Yes", "Yes"]) == "Answer with one word: Yes or No."  # from the pair, not the item
+    assert bbh_answer_format("t", ["-3", "0", "12"]) == "Answer with a number only."
+    dyck_hint = "Answer with the closing brackets only, separated by spaces."
+    assert bbh_answer_format("dyck_languages", ["] )", "} ]"]) == dyck_hint
+    sorting_hint = "Answer with the words in sorted order, separated by spaces."
+    assert bbh_answer_format("word_sorting", ["a b", "c d"]) == sorting_hint
+    option_hint = "Answer with the letter of the option, like `Answer: (A)`."
+    assert bbh_answer_format("t", ["(A)", "(B)", "Monsters, Inc"]) == option_hint
+    assert bbh_answer_format("t", ["free text", "more text"]) is None
 
 
 MMLU_ROWS = [
