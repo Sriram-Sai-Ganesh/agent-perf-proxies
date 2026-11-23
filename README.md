@@ -89,4 +89,5 @@ line, which `core.index` skips; a rerun gets a new run id.
 Working: ScienceWorld adapter and catalog, ReAct scaffold, episode and probe runner with resume, recovery and
 compounding probe builders, B2 (short tasks cut off after 20 steps: `runs/b2_sw_cutoff.yaml`, and
 `runs/b2_sw_short_plain.yaml` for comparison), vLLM launcher, CPU tests. Not yet: ALFWorld, Notepad and Verify
-scaffolds, state and deferred probes, static items (B3), LoRA training, analysis.
+scaffolds, state and deferred probes, B1, static items (B3), LoRA training, analysis. `docs/baselines.md`
+records what was decided for B1, B2 and B3 and what is still open.
