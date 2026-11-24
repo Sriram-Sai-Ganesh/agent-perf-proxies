@@ -88,7 +88,9 @@ against both versions.
     per fold with `analysis.pace.choose_questions`, then uses the held-out agent's accuracy on them
     (`analysis.pace.accuracy_on`) as its feature, in the same ridge regression as the other baselines. Only PACE's
     ranking of questions is used, not its second question set or its tuned blend of the two, because with about 14
-    models there is nothing to tune them on.
+    models there is nothing to tune them on. Two more things differ from PACE's code: a question's leverage is
+    summed over all components of the table of answers, where PACE uses only the first few (1 to 10, tuned per
+    target), and PACE predicts with its own Spearman-weighted regression, not plain accuracy on the questions.
 - **Comparing the two versions** shows whether PACE's choosing beats random choice for small models, which
   Yauney et al. (2026) found it often does not for closely matched models.
 - **Budget:** the 100 questions of either version are always used in full. They cost far less than the smallest

@@ -8,6 +8,11 @@ Only PACE's global ranking is used: a question ranks high when it has high lever
 structure of the agents-by-questions table of right and wrong answers) and when its right and wrong answers follow
 the agents' long-task scores (rank correlation). PACE's second, locally chosen set and its tuned blend of the two are
 not used, because with about 14 models there is nothing to tune them on.
+
+Two more things differ from PACE's code (scripts/pacebench/selection.py and config.py there). Leverage is summed here
+over every component of the table with a non-zero singular value, where PACE sums over only the first few (1 to 10,
+tuned per target). And the chosen questions are scored here as plain accuracy, where PACE predicts with its own
+Spearman-weighted regression.
 """
 
 import numpy as np

@@ -66,7 +66,9 @@ Runs resume: rerunning a config skips `(agent, item, seed)` triples already in `
 
 Under `$DATA_ROOT`: `catalogs/<env>.parquet` (tasks with gold trajectories and splits),
 `catalogs/scienceworld_dev_gold_scores.parquet` (the dev tasks again, where each row's `meta` also holds
-`gold_scores`, the gold path's score after each step; B2 needs it), `probes/<env>/<family>.jsonl` (probe items),
+`gold_scores`, the gold path's score after each step; B2 needs it. The scores stop where the environment ends the
+episode, at the task's end or at its limit of about 100 steps, so a longer gold path's last score can be below 1),
+`probes/<env>/<family>.jsonl` (probe items),
 `runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action, with the prompt sent, the completion, the parsed
 action, environment score, and token counts), and
 `provenance.json` beside each run (commit, patch of uncommitted changes, config, package versions).
