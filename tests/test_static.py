@@ -107,6 +107,17 @@ def test_is_correct_bbh_option_compares_the_leading_option_letter():
     assert not is_correct(item("text", "(A)"), "A robin")  # the article "A", not option A
 
 
+def test_is_correct_ignores_one_pair_of_brackets_around_the_answer():
+    # a reply that copies the brackets of the prompt's `Answer: <letter>`
+    assert is_correct(item("letter", "C"), extract_answer("Answer: <C>", "letter"))
+    assert is_correct(item("letter", "C"), "[C]") and not is_correct(item("letter", "C"), "<B>")
+    assert is_correct(item("text", "(A)"), "<(A)>") and is_correct(item("text", "(A)"), "[A]")
+    assert is_correct(item("number", "18"), "<18>") and is_correct(item("text", "Yes"), "<Yes>")
+    assert not is_correct(item("letter", "C"), "<letter>")
+    # in dyck_languages the brackets are the answer: "[ ] ]" is not "]"
+    assert not is_correct(dyck("]"), "[ ] ]")
+
+
 def test_latex_around_the_answer_is_removed():
     assert extract_answer("Answer: \\boxed{C}", "letter") == "C"
     assert extract_answer("Answer: $\\boxed{42}$", "number") == "42"

@@ -107,6 +107,14 @@ def extract_answer(text: str, answer_type: str) -> str | None:
     return lines[-1] if lines else None
 
 
+def _without_brackets(text: str) -> str:
+    """The text without one pair of "<>" or "[]" around the whole of it, as in a reply that copies the brackets of
+    the prompt's `Answer: <letter>`."""
+    if len(text) >= 2 and (text[0], text[-1]) in (("<", ">"), ("[", "]")):
+        return text[1:-1].strip()
+    return text
+
+
 def _first_number(text: str) -> Decimal | None:
     """The first number of the text, or of the part after its last "=", reading "−" as a minus sign."""
     text = text.replace("\N{MINUS SIGN}", "-").rsplit("=", 1)[-1]
@@ -124,8 +132,10 @@ def _plain_text(text: str) -> str:
 def is_correct(item: StaticItem, extracted: str | None) -> bool:
     """Whether the extracted answer matches the item's answer; no answer is wrong.
 
-    LaTeX around the answer is ignored. Letters are compared by the letter alone ("C", "(C)", "C.", "C) foo" and
-    "option C" all give C; the first letter of a word such as "I think" is not a letter). Numbers, and text answers that
+    LaTeX around the answer is ignored, and so is one pair of "<>" or "[]" around the whole answer ("<C>" gives C),
+    except in the dyck_languages subset, where brackets are the answer. Letters are compared by the letter alone
+    ("C", "(C)", "C.", "C) foo" and "option C" all give C; the first letter of a word such as "I think" is not a
+    letter). Numbers, and text answers that
     are whole numbers, are compared by value, ignoring commas, "$" and trailing zeros, using the first number found
     (after the last "=" if there is one). Other text is compared ignoring case, extra spaces, a trailing period and
     brackets around an option letter. Text answers have these special cases:
@@ -138,6 +148,8 @@ def is_correct(item: StaticItem, extracted: str | None) -> bool:
     if extracted is None:
         return False
     extracted = _unwrap_latex(extracted)
+    if item.subset != "dyck_languages":
+        extracted = _without_brackets(extracted)
     gold = item.answer.strip()
     if item.answer_type == "letter":
         match = LEADING_LETTER.match(extracted)
