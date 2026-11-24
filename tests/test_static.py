@@ -397,6 +397,19 @@ def test_run_static_correct_and_wrong():
     assert (wrong.reward, wrong.score, wrong.meta["correct"], wrong.valid) == (0.0, 0.0, False, True)
 
 
+def test_run_static_retries_a_cut_off_thinking_reply_and_marks_the_row():
+    class CutOffThinkingClient:
+        def chat(self, messages, seed, sampling, extra=None):
+            if extra["chat_template_kwargs"]["enable_thinking"]:
+                return Reply("", 30, 100, 0, 0.5, reasoning="I'll try B. I'll try B.", raw={"finish_reason": "length"})
+            return Reply("Answer: B", 30, 8, 0, 0.5, raw={"finish_reason": "stop"})
+
+    (row,) = run_static(CutOffThinkingClient(), "a", True, item("letter", "B"), 0, S, "r")
+    assert row.meta["correct"]
+    assert row.scaffold_state == {"reasoning": "I'll try B. I'll try B.", "retried_without_thinking": True}
+    assert (row.prompt_tokens, row.completion_tokens) == (60, 108)  # charged for both calls
+
+
 def test_run_static_without_an_answer_is_invalid_and_wrong():
     (row,) = run_static(ReplyClient("I cannot say."), "a", False, item("letter", "B"), 0, S, "r")
     assert (row.action, row.valid, row.score, row.meta["extracted"], row.meta["correct"]) == (

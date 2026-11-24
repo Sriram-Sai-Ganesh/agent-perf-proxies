@@ -206,7 +206,7 @@ def run_static(
             completion_tokens=reply.completion_tokens,
             cached_tokens=reply.cached_tokens,
             latency_s=reply.latency_s,
-            scaffold_state={"reasoning": reply.reasoning} if reply.reasoning else {},
+            scaffold_state=_scaffold_state(reply),
             meta={
                 "source": item.source,
                 "subset": item.subset,
