@@ -216,7 +216,7 @@ def test_random_question_ids_are_the_same_for_the_same_pool_and_seed_in_any_orde
     assert ids != random_question_ids(POOL, 5, seed=1)
 
 
-def test_b3_random_control_uses_the_same_questions_for_every_agent():
+def test_b3_fixed_sample_uses_the_same_questions_for_every_agent():
     chosen = set(random_question_ids(POOL, 5, seed=0))
     results = static_results(
         answers("on_chosen", chosen) + answers("off_chosen", set(POOL) - chosen) + answers("all_right", set(POOL))
@@ -224,18 +224,18 @@ def test_b3_random_control_uses_the_same_questions_for_every_agent():
     c_full = {"on_chosen": 1000.0, "off_chosen": 1000.0, "all_right": 1000.0}
     rows = b3_random_features(results, POOL, c_full, betas=[0.1], n=5, seed=0)
     assert {r["agent_id"]: r["feature"] for r in rows} == {"on_chosen": 1.0, "off_chosen": 0.0, "all_right": 1.0}
-    assert {(r["method"], r["draw"], r["n_items"], r["tokens_spent"]) for r in rows} == {("B3-random", 0, 5, 75)}
+    assert {(r["method"], r["draw"], r["n_items"], r["tokens_spent"]) for r in rows} == {("B3", 0, 5, 75)}
     assert rows == b3_random_features(results, POOL, c_full, betas=[0.1], n=5, seed=0)
 
 
-def test_b3_random_control_is_none_when_over_budget_and_one_row_per_agent_and_beta():
+def test_b3_fixed_sample_is_none_when_over_budget_and_one_row_per_agent_and_beta():
     results = static_results(answers("a", set(POOL)))
     rows = b3_random_features(results, POOL, {"a": 1000.0}, betas=[0.05, 0.075, 0.1], n=5, seed=0)  # costs 75 tokens
     assert [(r["beta"], r["feature"]) for r in rows] == [(0.05, None), (0.075, 1.0), (0.1, 1.0)]
     assert rows[0]["budget_tokens"] == 50.0 and rows[0]["tokens_spent"] == 75 and rows[0]["c_full"] == 1000.0
 
 
-def test_b3_random_control_says_how_many_questions_are_missing_and_uses_the_answered_ones(capsys):
+def test_b3_fixed_sample_says_how_many_questions_are_missing_and_uses_the_answered_ones(capsys):
     chosen = random_question_ids(POOL, 5, seed=0)
     partial = [static_step("a", q, q == chosen[0]) for q in chosen[:2]]
     rows = b3_random_features(static_results(partial), POOL, {"a": 1000.0}, betas=[0.1], n=5, seed=0)

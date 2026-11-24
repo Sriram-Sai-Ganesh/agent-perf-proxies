@@ -9,7 +9,8 @@ still open. Last updated 2026-11-23.
 | --- | --- | --- |
 | B1 | the mean score over a few of the agent's long episodes | coded (`analysis/features.py b1`); needs the long runs |
 | B2 | the agent's score on long tasks cut off after 20 steps | coded (`analysis/features.py b2`, `runs/b2_sw_cutoff.yaml`) |
-| B3 | the share of non-agentic test questions (maths, general knowledge, reasoning) the plain model gets right | coded (`core.static.build`, `runs/b3_static.yaml`, `analysis/features.py b3`, `analysis/pace.py`); pool not yet built |
+| B3 | the share of a fixed random set of 100 non-agentic test questions (maths, general knowledge, reasoning) the plain model gets right | coded (`core.static.build`, `runs/b3_static.yaml`, `analysis/features.py b3`); pool not yet built |
+| B3-PACE | the same, on 100 questions chosen the PACE way | question choice coded (`analysis/pace.py`); used by the prediction step, not yet written |
 
 ## Shared rules
 
@@ -51,12 +52,21 @@ per task type. The original definition ("dev tasks with an official solution of 
 contain task types that have no long tasks, so it compares different skills. It is kept as
 `runs/b2_sw_short_plain.yaml` for comparison. The measurements behind this are kept outside git.
 
-## B3: non-agentic questions, chosen the PACE way
+## B3: non-agentic questions, in two versions
 
-B3 follows PACE (Song et al., 2026, https://github.com/neulab/pace): from a large pool of ordinary test
-questions, keep the ones whose right and wrong answers best follow the agents' long-task scores. PACE's
-published question set is not reused, because it was chosen to predict coding and web-browsing agents built
-on large models, and many of its questions need code to be run or images.
+Both versions use 100 questions from one pool of ordinary test questions, which every agent answers once.
+
+- **B3** is the agent's accuracy on a fixed random set of 100 pool questions, the same set for every agent, drawn
+  with a fixed seed. This is the baseline as decided on 2026-10-27. Nothing about it is fitted to the agents, so
+  it cannot fit noise.
+- **B3-PACE** follows PACE (Song et al., 2026, https://github.com/neulab/pace): keep the 100 pool questions whose
+  right and wrong answers best follow the agents' long-task scores. It is the stronger version if the choice
+  works, but the choice is made from about 13 agents in each round, so it may partly fit noise. PACE's published
+  question set is not reused, because it was chosen to predict coding and web-browsing agents built on large
+  models, and many of its questions need code to be run or images.
+
+Both are reported. A claim that the capability probes predict better than non-agentic questions has to hold
+against both versions.
 
 - **Question pool:** about 500 text questions with one checkable answer: about 200 from MMLU-Pro (multiple
   choice), 150 from GSM8K (a number) and 150 from BBH (reasoning tasks with short answers). They are drawn once,
@@ -66,34 +76,35 @@ on large models, and many of its questions need code to be run or images.
   and checked against the right one: the letter for multiple choice, the final number for GSM8K, an exact match
   for BBH. Comparing the model's probabilities for each choice was ruled out, because it needs a different
   server call and does not work for thinking agents.
-- **Choosing the 100 questions happens inside the prediction step.** In each round of testing (each
+- **B3's fixed random set** is drawn in `analysis/features.py b3`, which writes each agent's accuracy on it,
+  left empty at a budget that the tokens of those questions pass.
+- **For B3-PACE, choosing the 100 questions happens inside the prediction step.** In each round of testing (each
   leave-one-out fold), the 100 questions are chosen with PACE's rule using only the agents the predictor is fit
-  on. The held-out agent's answers must not affect the choice, or B3 would be predicting with knowledge of the
-  answer. So B3 is split across two parts of the code:
-  - `analysis/features.py` writes each agent's result on every pool question (right or wrong, and tokens
-    spent), not a single number.
+  on. The held-out agent's answers must not affect the choice, or B3-PACE would be predicting with knowledge of
+  the answer. So B3-PACE is split across two parts of the code:
+  - `analysis/features.py b3` also writes each agent's result on every pool question (right or wrong, and tokens
+    spent).
   - The prediction step (`analysis/predict.py`, owned by whoever fits the predictors) chooses the 100 questions
     per fold with `analysis.pace.choose_questions`, then uses the held-out agent's accuracy on them
     (`analysis.pace.accuracy_on`) as its feature, in the same ridge regression as the other baselines. Only PACE's
     ranking of questions is used, not its second question set or its tuned blend of the two, because with about 14
     models there is nothing to tune them on.
-- **Random control:** 100 questions drawn at random from the same pool give a second version of B3 at no extra
-  cost, scored as plain accuracy. It shows whether PACE's choosing beats random choice for small models, which
+- **Comparing the two versions** shows whether PACE's choosing beats random choice for small models, which
   Yauney et al. (2026) found it often does not for closely matched models.
-- **Budget:** the chosen 100 questions are always used in full. They cost far less than the smallest budget for
-  a non-thinking agent (about 0.06M tokens against 0.35M).
+- **Budget:** the 100 questions of either version are always used in full. They cost far less than the smallest
+  budget for a non-thinking agent (about 0.06M tokens against 0.35M).
 
 Known limits, to state in the write-up:
 
 - B3 cannot tell scaffolds apart: two agents with the same model and different scaffolds answer the questions
   the same way.
 - PACE chose its questions using 14 models. We will have about the same number of models that answer
-  differently (base models, fine-tunes and thinking variants), so the choice may partly fit noise. The random
-  control shows how much.
+  differently (base models, fine-tunes and thinking variants), so B3-PACE's choice may partly fit noise. B3,
+  with its fixed random set, shows how much.
 
 Open questions:
 
 - Whether the cost of answering the whole pool (about 0.3M tokens per non-thinking agent, more with thinking)
-  should count against B3's budget. Suggested: no, as in PACE, where it is a one-time setup cost, but report it.
-- Whether thinking agents' answers to the 100 chosen questions fit under the smallest budget. Check after the
+  should count against B3-PACE's budget. Suggested: no, as in PACE, where it is a one-time setup cost, but report it.
+- Whether thinking agents' answers to the 100 questions fit under the smallest budget. Check after the
   first thinking agent answers the pool.

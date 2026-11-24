@@ -3,11 +3,12 @@
 python -m analysis.features b1 --truth-steps $DATA_ROOT/runs/pilot_sw_long/steps.jsonl \
     --out $DATA_ROOT/features/b1.parquet
 python -m analysis.features b2 --b2-steps $DATA_ROOT/runs/b2_sw_cutoff/steps.parquet \
-    --truth-steps $DATA_ROOT/runs/pilot_sw_long/steps.jsonl --tasks $DATA_ROOT/catalogs/scienceworld.parquet \
+    --truth-steps $DATA_ROOT/runs/pilot_sw_long/steps.jsonl \
+    --tasks $DATA_ROOT/catalogs/scienceworld_dev_gold_scores.parquet \
     --out $DATA_ROOT/features/b2.parquet
 python -m analysis.features b3 --static-steps $DATA_ROOT/runs/b3_static/steps.jsonl \
     --truth-steps $DATA_ROOT/runs/pilot_sw_long/steps.jsonl --pool $DATA_ROOT/static/pool.jsonl \
-    --out-items $DATA_ROOT/features/b3_items.parquet --out $DATA_ROOT/features/b3_random.parquet
+    --out-items $DATA_ROOT/features/b3_items.parquet --out $DATA_ROOT/features/b3.parquet
 
 B1: the agent's long episodes themselves are drawn at random, from one seed's episodes at a time, until a share (beta)
 of the agent's full long-evaluation cost in tokens is spent; the feature is their mean progress (best score).
@@ -16,10 +17,10 @@ B2: each agent's short episodes (cut off after 20 steps, runs/b2_sw_cutoff.yaml)
 the official solution's score at a reference step (15 by default), at most 1. Episodes are then drawn at random until
 a share (beta) of the agent's full long-evaluation cost in tokens is spent.
 
-B3: each agent's plain model answers non-agentic questions (steps of kind "static"). ``b3`` writes every agent's result
-on every question (right or wrong, tokens spent); the prediction step chooses which questions to use (analysis/pace.py).
-``b3`` also writes the random control, "B3-random": the agent's accuracy on one fixed random set of questions, the same
-for every agent, left empty at a budget that the tokens of those questions pass.
+B3: each agent's plain model answers non-agentic questions (steps of kind "static"). ``b3`` writes the B3 feature:
+the agent's accuracy on one fixed random set of questions, the same for every agent, left empty at a budget that the
+tokens of those questions pass. It also writes every agent's result on every question (right or wrong, tokens spent),
+from which the prediction step makes the second version, "B3-PACE", by choosing the questions itself (analysis/pace.py).
 """
 
 import argparse
@@ -218,7 +219,7 @@ def b3_random_features(
             rows.append(
                 {
                     "agent_id": agent,
-                    "method": "B3-random",
+                    "method": "B3",
                     "beta": beta,
                     "draw": 0,
                     "feature": feature if spent <= budget else None,
@@ -315,12 +316,14 @@ def main() -> None:
     b2.add_argument("--repeats", type=int, default=20)
     b2.add_argument("--ref-step", type=int, default=15, help="step of the gold score the cut-off score is judged by")
     b2.add_argument("--seed", type=int, default=0)
-    b3 = methods.add_parser("b3", help="each agent's result on every static question, and the random-question control")
+    b3 = methods.add_parser(
+        "b3", help="each agent's accuracy on a fixed random set of static questions, and its result on every question"
+    )
     b3.add_argument("--static-steps", nargs="+", required=True, help="steps files of the static questions")
     b3.add_argument("--truth-steps", nargs="+", required=True, help="steps files of the long evaluation")
     b3.add_argument("--pool", required=True, help="JSONL file of the question pool, one item with an item_id per line")
     b3.add_argument("--out-items", required=True, help="Parquet file of every agent's result on every question")
-    b3.add_argument("--out", required=True, help="random-control features Parquet file")
+    b3.add_argument("--out", required=True, help="features Parquet file")
     b3.add_argument("--betas", type=parse_betas, default=BETAS, help="comma-separated shares of the full cost")
     b3.add_argument("--n", type=int, default=100, help="how many random questions")
     b3.add_argument("--seed", type=int, default=0)
