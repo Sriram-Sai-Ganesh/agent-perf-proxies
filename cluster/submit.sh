@@ -6,8 +6,9 @@
 #   GPUS=2 cluster/submit.sh gemma-4-12b/none/react-think probes g412bthink_16k --dp 2 --reasoning-parser gemma4
 # Run ids are pilot_sw_long_<suffix>, or pilot_recovery_<suffix> and pilot_compounding_<suffix>, or
 # b2_sw_cutoff_<suffix> and b2_sw_short_plain_<suffix>, or b3_static_<suffix>.
-# Output budget: 8192 tokens for a thinking agent, which the runner retries without thinking when it fills them
-# (decision D8.3), 256 otherwise; for static, 16384 for a thinking agent and 1024 otherwise.
+# Output budget: 8192 tokens for a thinking agent on every kind, which the runner retries without thinking when it
+# fills them (decision D8.3), so the plain test questions are answered the way the episodes are run; for other
+# agents 256, or 1024 on the plain test questions.
 set -euo pipefail
 cd "$(dirname "$0")/.." && source cluster/site.env
 agent="${1:?agent id from configs/agents.yaml}"; kind="${2:?episodes, probes, short or static}"; suffix="${3:?run id suffix}"; shift 3
@@ -40,7 +41,7 @@ $run --config runs/pilot_recovery.yaml -o run_id=pilot_compounding_$suffix -o pr
 CMD
 elif [ "$kind" = static ]; then
   hours=1
-  [ "$thinking" = True ] && static_max_tokens=16384 || static_max_tokens=1024
+  [ "$thinking" = True ] && static_max_tokens=$max_tokens || static_max_tokens=1024
   cat > "$commands" <<CMD
 cluster/run.sh . -m core.run --config runs/b3_static.yaml -o run_id=b3_static_$suffix -o agents='[$agent]' -o endpoint.file=\$ENDPOINT -o sampling.max_tokens=$static_max_tokens -o workers=32
 CMD
