@@ -52,7 +52,8 @@ def _gold_score_at(task: dict, step: int) -> float:
         meta = json.loads(meta)
     if "gold_scores" not in meta:
         raise SystemExit(
-            "The task catalog predates gold_scores; rebuild it with env_scienceworld.catalog to filter by gold score."
+            "This task catalog has no gold_scores, which filtering by gold score needs. Download the catalog that has "
+            "them from the shared results dataset (configs/catalogs/scienceworld_dev_gold_scores.parquet)."
         )
     scores = meta["gold_scores"]
     return float(scores[min(step, len(scores)) - 1]) if len(scores) else 0.0

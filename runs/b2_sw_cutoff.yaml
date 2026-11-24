@@ -2,7 +2,7 @@
 # Needs a vLLM endpoint (serve/server.py writes endpoint.json).
 run_id: b2_sw_cutoff
 env: {name: scienceworld, settings: {simplification: easy, step_limit: 100}}
-tasks: $DATA_ROOT/catalogs/scienceworld.parquet
+tasks: $DATA_ROOT/catalogs/scienceworld_dev_gold_scores.parquet  # dev tasks with the gold path's score after each step
 suite:
   split: dev
   task_types:  # the task types that have long test tasks

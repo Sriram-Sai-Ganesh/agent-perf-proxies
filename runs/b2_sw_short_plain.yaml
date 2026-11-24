@@ -3,7 +3,7 @@
 # Needs a vLLM endpoint (serve/server.py writes endpoint.json).
 run_id: b2_sw_short_plain
 env: {name: scienceworld, settings: {simplification: easy, step_limit: 100}}
-tasks: $DATA_ROOT/catalogs/scienceworld.parquet
+tasks: $DATA_ROOT/catalogs/scienceworld_dev_gold_scores.parquet  # dev tasks with the gold path's score after each step
 suite: {split: dev, max_gold: 10, cap_per_type: 8, seed: 0}
 agents: [granite-4.1-8b/none/react]
 endpoint: {file: $DATA_ROOT/serve/granite-4.1-8b/endpoint.json}
