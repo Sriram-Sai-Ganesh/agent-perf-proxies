@@ -1,9 +1,10 @@
-"""Run agents over a task suite or a probe set, writing step rows as each item completes.
+"""Run agents over a task suite, a probe set or a pool of plain test questions, writing step rows as each item completes.
 
     python -m core.run --config runs/pilot_sw_long.yaml [-o key=value ...]
 
-Each worker process owns one environment instance and shares the model endpoint. Resume skips
-(agent, item, seed) triples already in the output JSONL.
+The config names the items with `tasks` (and `suite`), `probes` or `static`. Each worker process owns one environment
+instance and shares the model endpoint; a config without `env` (plain test questions) starts no environment and loads
+no scaffolds. Resume skips (agent, item, seed) triples already in the output JSONL.
 """
 
 import argparse
@@ -20,9 +21,9 @@ from core import provenance, store
 from core.agent import AgentSpec, load_agents
 from core.env import load_environment
 from core.llm import Client, Sampling
-from core.runner import run_episode, run_probe
+from core.runner import run_episode, run_probe, run_static
 from core.scaffolds import load_scaffold
-from core.schema import ProbeItem, TaskRow, from_record
+from core.schema import ProbeItem, StaticItem, TaskRow, from_record
 from core.suites import select
 
 _worker: dict = {}
@@ -54,10 +55,11 @@ def endpoint_of(cfg: dict) -> tuple[str, str | None]:
 
 
 def _init(cfg: dict, base_url: str, api_key_env: str | None, agents: list[AgentSpec]) -> None:
-    _worker["env"] = load_environment(cfg["env"]["name"], cfg["env"].get("settings") or {})
+    if "env" in cfg:
+        _worker["env"] = load_environment(cfg["env"]["name"], cfg["env"].get("settings") or {})
+        _worker["scaffolds"] = {a.id: load_scaffold(a.scaffold, **(cfg.get("scaffold") or {})) for a in agents}
     _worker["clients"] = {a.id: Client(base_url, a.served_model, api_key_env) for a in agents}
     _worker["agents"] = {a.id: a for a in agents}
-    _worker["scaffolds"] = {a.id: load_scaffold(a.scaffold, **(cfg.get("scaffold") or {})) for a in agents}
     _worker["sampling"] = Sampling(**(cfg.get("sampling") or {}))
     _worker["cfg"] = cfg
 
@@ -70,25 +72,35 @@ def _job(args: tuple) -> list:
         "client": _worker["clients"][agent_id],
         "agent_id": agent_id,
         "thinking": agent.thinking,
-        "scaffold": _worker["scaffolds"][agent_id],
-        "env": _worker["env"],
         "seed": seed,
         "sampling": _worker["sampling"],
         "run_id": cfg["run_id"],
     }
     try:
+        if isinstance(item, StaticItem):
+            return run_static(item=item, **common)
+        common |= {"scaffold": _worker["scaffolds"][agent_id], "env": _worker["env"]}
         if isinstance(item, ProbeItem):
             return run_probe(item=item, continuation=int(cfg.get("probe_continuation", 0)), **common)
         return run_episode(task=item, max_steps=cfg.get("max_steps", 100), **common)
     except Exception as e:  # noqa: BLE001 - one failed item must not end the run; it is logged and retried on resume
-        print(
-            f"FAILED {agent_id} {getattr(item, 'task_id', getattr(item, 'probe_id', '?'))} seed={seed}: {e!r}",
-            file=sys.stderr,
-        )
+        print(f"FAILED {agent_id} {item_id_of(item)} seed={seed}: {e!r}", file=sys.stderr)
         return []
 
 
+def item_id_of(item) -> str:
+    """The id that names an item in the output: task_id, probe_id or item_id."""
+    return getattr(item, "task_id", None) or getattr(item, "probe_id", None) or item.item_id
+
+
+def items_file(cfg: dict) -> str:
+    """The file the config reads its items from: `static`, `probes` or `tasks`."""
+    return expand(cfg.get("static") or cfg.get("probes") or cfg["tasks"])
+
+
 def items_of(cfg: dict) -> list:
+    if "static" in cfg:
+        return [from_record(StaticItem, r) for r in store.read(expand(cfg["static"]))]
     if "probes" in cfg:
         return [from_record(ProbeItem, r) for r in store.read(expand(cfg["probes"]))]
     tasks = store.read_parquet(expand(cfg["tasks"]))
@@ -103,16 +115,19 @@ def main() -> None:
     cfg = load_config(args.config, args.override)
     out_dir = expand(cfg.get("out", "$DATA_ROOT/runs/" + cfg["run_id"]))
     jsonl = os.path.join(out_dir, "steps.jsonl")
-    with open(expand(cfg.get("probes") or cfg["tasks"]), "rb") as f:
+    with open(items_file(cfg), "rb") as f:
         cfg["items_sha256"] = hashlib.sha256(f.read()).hexdigest()  # proves two sites answered the same items
     record = provenance.start(out_dir, cfg)
 
     agents = load_agents(cfg.get("agents_file", "configs/agents.yaml"), cfg["agents"])
     items = items_of(cfg)
     done = store.done_keys(jsonl)
-    key = lambda it: getattr(it, "task_id", None) or it.probe_id
     jobs = [
-        (a.id, it, s) for a in agents for it in items for s in cfg.get("seeds", [0]) if (a.id, key(it), s) not in done
+        (a.id, it, s)
+        for a in agents
+        for it in items
+        for s in cfg.get("seeds", [0])
+        if (a.id, item_id_of(it), s) not in done
     ]
     print(
         f"{len(items)} items x {len(agents)} agents x {len(cfg.get('seeds', [0]))} seeds; {len(done)} done, {len(jobs)} to run"

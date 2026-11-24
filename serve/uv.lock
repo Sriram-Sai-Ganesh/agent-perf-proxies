@@ -329,6 +329,8 @@ version = "0.0.0"
 source = { editable = "../" }
 dependencies = [
     { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
     { name = "pyarrow" },
     { name = "pyyaml" },
 ]
@@ -336,12 +338,15 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
+    { name = "huggingface-hub", specifier = ">=0.30" },
+    { name = "numpy", specifier = ">=2" },
     { name = "pyarrow", specifier = ">=17" },
     { name = "pyyaml", specifier = ">=6" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pre-commit", specifier = ">=4" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.14" },
 ]

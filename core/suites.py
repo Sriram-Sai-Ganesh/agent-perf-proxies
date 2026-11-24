@@ -1,5 +1,6 @@
 """Task suites are filters over the task catalog, capped per task type so no type dominates."""
 
+import json
 import random
 from collections import defaultdict
 
@@ -12,7 +13,15 @@ def select(
     task_types: list[str] | None = None,
     cap_per_type: int | None = None,
     seed: int = 0,
+    ref_step: int | None = None,
+    min_ref_score: float | None = None,
 ) -> list[dict]:
+    """Tasks in `split`, optionally kept by gold length (min_gold, max_gold) and task type (task_types).
+
+    With ref_step and min_ref_score, tasks whose gold path scores below min_ref_score after ref_step steps
+    (or after its last step, if it is shorter) are dropped. At most cap_per_type tasks per type are kept,
+    chosen at random with `seed` after the other filters.
+    """
     rng = random.Random(seed)
     by_type = defaultdict(list)
     for t in tasks:
@@ -24,6 +33,8 @@ def select(
             continue
         if task_types and t["task_type"] not in task_types:
             continue
+        if ref_step is not None and min_ref_score is not None and _gold_score_at(t, ref_step) < min_ref_score:
+            continue
         by_type[t["task_type"]].append(t)
     out = []
     for task_type in sorted(by_type):
@@ -32,3 +43,17 @@ def select(
             rows = rng.sample(rows, cap_per_type)
         out.extend(rows)
     return out
+
+
+def _gold_score_at(task: dict, step: int) -> float:
+    """The gold path's score after `step` steps, or after its last step if it is shorter."""
+    meta = task["meta"]
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    if "gold_scores" not in meta:
+        raise SystemExit(
+            "This task catalog has no gold_scores, which filtering by gold score needs. Download the catalog that has "
+            "them from the shared results dataset (configs/catalogs/scienceworld_dev_gold_scores.parquet)."
+        )
+    scores = meta["gold_scores"]
+    return float(scores[min(step, len(scores)) - 1]) if len(scores) else 0.0

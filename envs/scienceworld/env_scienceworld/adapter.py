@@ -35,6 +35,13 @@ class ScienceWorld:
                 for v in variations:
                     self.env.load(task_type, v, self.simplification, generateGoldPath=True)
                     gold = list(self.env.get_gold_action_sequence())
+                    self.env.reset()
+                    gold_scores = []
+                    for action in gold:
+                        result = self.step(action)
+                        gold_scores.append(round(result.score, 4))
+                        if result.done:
+                            break
                     rows.append(
                         TaskRow(
                             task_id=f"scienceworld/{task_type}/{v}",
@@ -45,7 +52,8 @@ class ScienceWorld:
                             gold_len=len(gold),
                             gold_actions=gold,
                             description=self.env.get_task_description(),
-                            meta={"simplification": self.simplification},
+                            # B2 compares an agent's early progress with the gold path's
+                            meta={"simplification": self.simplification, "gold_scores": gold_scores},
                         )
                     )
         return rows

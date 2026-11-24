@@ -1,0 +1,8 @@
+# Baseline B3: each agent's plain language model answers ordinary test questions, no scaffold and no environment.
+run_id: b3_static
+static: $DATA_ROOT/static/pool.jsonl
+agents: [granite-4.1-8b/none/react]
+endpoint: {file: $DATA_ROOT/serve/granite-4.1-8b/endpoint.json}
+seeds: [0]
+sampling: {temperature: 0.0, max_tokens: 1024}
+workers: 32

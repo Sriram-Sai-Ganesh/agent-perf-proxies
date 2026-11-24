@@ -14,10 +14,12 @@ are kept outside git.
 | `core/` | root | Row schemas, trajectory store, provenance, model client, scaffolds, episode and probe runner, probe builders, `core.run` entry point |
 | `envs/scienceworld/` | own | ScienceWorld adapter, task catalog, smoke test. Ships its own JRE via `jdk4py` |
 | `serve/` | own | vLLM OpenAI-compatible server for one base model and its LoRA adapters |
+| `analysis/` | root | Baseline features from finished runs (`features.py`), choice of test questions (`pace.py`) |
 | `configs/` | | `agents.yaml`: the agent pool (base, adapter, scaffold) |
 | `runs/` | | Run configs for `core.run` |
 | `cluster/` | | `run.sh` (pick a venv, source `site.env`), `site.env.example`, batch job scripts, `publish.sh` |
 | `tests/` | root | CPU tests with a scripted environment and a scripted model |
+| `docs/` | | `baselines.md`: what was decided for the baselines B1, B2 and B3, and what is still open |
 
 Each folder with a `pyproject.toml` is its own `uv` project and installs `core` by path. Environments, vLLM
 and training never share a venv.
@@ -63,8 +65,12 @@ Runs resume: rerunning a config skips `(agent, item, seed)` triples already in `
 ## Outputs
 
 Under `$DATA_ROOT`: `catalogs/<env>.parquet` (tasks with gold trajectories and splits),
-`probes/<env>/<family>.jsonl` (probe items), `runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action,
-with the prompt sent, the completion, the parsed action, environment score, and token counts), and
+`catalogs/scienceworld_dev_gold_scores.parquet` (the dev tasks again, where each row's `meta` also holds
+`gold_scores`, the gold path's score after each step; B2 needs it. The scores stop where the environment ends the
+episode, at the task's end or at its limit of about 100 steps, so a longer gold path's last score can be below 1),
+`probes/<env>/<family>.jsonl` (probe items),
+`runs/<run_id>/steps.{jsonl,parquet}` (one row per agent action, with the prompt sent, the completion, the parsed
+action, environment score, and token counts), and
 `provenance.json` beside each run (commit, patch of uncommitted changes, config, package versions).
 
 ## Sharing results
@@ -73,6 +79,14 @@ Finished runs are shared through the private Hugging Face dataset named by `RESU
 as `traces/<SITE>/<run_id>/` holding `steps.parquet`, `provenance.json` and `provenance.diff`. Probe items and
 catalogs live under `configs/` there. Download them, never rebuild them, so every site answers the same items;
 each run's provenance records their sha256 as `items_sha256`.
+
+The dev catalog with gold scores is a separate file so that `catalogs/scienceworld.parquet`, which earlier runs
+answered, stays as it is. One site builds it once and uploads it to `configs/catalogs/`; every other site downloads it:
+
+```bash
+cluster/run.sh envs/scienceworld -m env_scienceworld.catalog --splits dev \
+    --out $DATA_ROOT/catalogs/scienceworld_dev_gold_scores.parquet
+```
 
 ```bash
 cluster/publish.sh <run_id>...     # refuses a run that has not finished or whose commit is not on origin
@@ -86,5 +100,9 @@ line, which `core.index` skips; a rerun gets a new run id.
 ## Status
 
 Working: ScienceWorld adapter and catalog, ReAct scaffold, episode and probe runner with resume, recovery and
-compounding probe builders, vLLM launcher, CPU tests. Not yet: ALFWorld, Notepad and Verify scaffolds, state
-and deferred probes, static items (B3), LoRA training, analysis.
+compounding probe builders, B2 (short tasks cut off after 20 steps: `runs/b2_sw_cutoff.yaml`, and
+`runs/b2_sw_short_plain.yaml` for comparison), B1 (`analysis/features.py b1`), B3 (pool built once with
+`python -m core.static.build --out $DATA_ROOT/static/pool.jsonl`, answered with `runs/b3_static.yaml` or
+`cluster/submit.sh <agent> static <suffix>`, PACE question choice in `analysis/pace.py`), vLLM launcher, CPU tests.
+Not yet: ALFWorld, Notepad and Verify scaffolds, state and deferred probes, LoRA training, prediction and metrics.
+`docs/baselines.md` records what was decided for B1, B2 and B3 and what is still open.
